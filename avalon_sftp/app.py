@@ -1,36 +1,45 @@
 
 import sys
-# from avalon.vendor.Qt import QtWidgets
-from Qt import QtWidgets
+from avalon.vendor.Qt import QtWidgets
+from avalon import style
+from .widgets import VersionListWidget, WorkerWidget
 
 
-class SceneUploader(QtWidgets.QDialog):
+class Window(QtWidgets.QDialog):
+    """Workfile uploader main window
+    """
 
     def __init__(self, parent=None):
-        super(SceneUploader, self).__init__(parent)
+        super(Window, self).__init__(parent)
 
-        button = QtWidgets.QProgressBar()
-        button.setMinimum(0)
-        button.setMaximum(100)
-        for i in range(100):
-            button.setValue(i)
-        button.show()
+        self.setWindowTitle("Workfile Uploader")
 
+        body = QtWidgets.QWidget()
 
-class VersionUploader():
-    # Like Loader, but only for upload
-    pass
+        version = VersionListWidget()
+        control = WorkerWidget()
+
+        body_layout = QtWidgets.QVBoxLayout(body)
+        body_layout.addWidget(version)
+        body_layout.addWidget(control)
+
+        layout = QtWidgets.QVBoxLayout(self)
+        layout.addWidget(body)
+
+        # Connect
+        control.start_btn.clicked.connect(version.refresh)
+
+        # Defaults
+        self.resize(700, 500)
 
 
 def show():
     app = QtWidgets.QApplication(sys.argv)
-    window = SceneUploader()
+    window = Window()
+    window.setStyleSheet(style.load_stylesheet())
     window.show()
     app.exec_()
 
 
 def cli():
     show()
-
-
-show()
