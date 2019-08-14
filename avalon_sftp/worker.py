@@ -109,7 +109,7 @@ def display_progress(messages):
     print("---------------------------")
 
 
-class JobProducer(object):
+class JobGenerator(object):
     """
     """
 
@@ -203,19 +203,20 @@ class MockUploader(object):
         pass
 
 
-class MockJobProducer(object):
+class MockJobGenerator(object):
 
     def __init__(self):
-        self.producing = False
         self.interrupted = False
-        self.deque = deque()
-        self.condition = threading.Condition()
 
     def stop(self):
         self.interrupted = True
 
-    def from_workfile(self):
-        self.stop()
+    def start(self):
+        self.interrupted = False
+
+        # Open subprocess, mock open scene
+
+        # Also mock additional jobs
 
         src_tmp = "/local/Proj/{asset}/pub/{subset}/{version}/file.%04d.dum"
         dst_tmp = "/remote/Proj/{asset}/pub/{subset}/{version}/file.%04d.dum"
@@ -237,40 +238,24 @@ class MockJobProducer(object):
             "StyleB",
         ]
 
-        def produce():
-            self.deque.clear()
-            self.producing = True
-            self.interrupted = False
+        for asset in assets:
+            for family in families:
+                for subset in subsets:
+                    for version in range(1, 4):
+                        job = {
+                            "asset": asset,
+                            "family": family,
+                            "subset": subset,
+                            "version": version * random.randint(1, 5),
+                        }
+                        src = src_tmp.format(**job)
+                        dst = dst_tmp.format(**job)
 
-            condition = ProducerCondition(self.condition)
+                        job["content"] = (src, dst)
 
-            for asset in assets:
-                for family in families:
-                    for subset in subsets:
-                        for version in range(1, 4):
-                            data = {
-                                "asset": asset,
-                                "family": family,
-                                "subset": subset,
-                                "version": version * random.randint(1, 5),
-                            }
-                            src = src_tmp.format(**data)
-                            dst = dst_tmp.format(**data)
+                        time.sleep(random.random() * 0.2)
 
-                            data["job"] = (src, dst)
+                        if self.interrupted:
+                            return
 
-                            with condition:
-                                if self.interrupted:
-                                    self.producing = False
-                                    return
-                                else:
-                                    self.deque.append(data)
-
-                            time.sleep(random.random() * 0.1)
-
-            with condition:
-                self.producing = False
-
-        producer = threading.Thread(target=produce, daemon=True)
-        producer.start()
-        return producer
+                        yield job
