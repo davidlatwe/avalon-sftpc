@@ -1,164 +1,283 @@
 
-import threading
-from collections import deque
-
 from avalon.vendor.Qt import QtCore
 from avalon.tools.projectmanager.model import TreeModel, Node
 
-from .lib import ProducerCondition, ConsumerCondition
-from .worker import MockJobGenerator
+from .lib import JobProducer, JobConsumer
+from .worker import job_generator
 
 
-class JobProducer(object):
+class JobSourceModel(TreeModel):
 
-    def __init__(self, generator):
-        self.generator = generator
-        self.producing = False
-        self.interrupted = False
-        self.deque = deque()
-        self.thread = {"_": None}
-        self.condition = threading.Condition()
+    staging = QtCore.Signal()
+    staged = QtCore.Signal()
+    canceling = QtCore.Signal()
+    canceled = QtCore.Signal()
 
-    def stop(self):
-        self.interrupted = True
-        self.generator.stop()
+    STAGING_COLUMNS = [
+        "project",
+        "type",
+        "detail",
+        "site",
+        "count",
+        "size",
+    ]
 
-    def is_alive(self):
-        return self.thread["_"] and self.thread["_"].is_alive()
+    StagingDisplayRole = QtCore.Qt.UserRole + 10
+    StagingSortRole = QtCore.Qt.UserRole + 11
 
-    def start(self):
-        if self.thread["_"]:
-            self.stop()
-            print("Stopping producer..")
-            # Wait till previous thread stopped.
-            while self.thread["_"]:
-                pass
-
-        def produce():
-            condition = ProducerCondition(self.condition)
-
-            self.deque.clear()
-            self.interrupted = False
-            self.producing = True
-
-            for job in self.generator.start():
-                with condition:
-                    if not self.interrupted:
-                        self.deque.append(job)
-                    else:
-                        break
-
-            # Bye
-            with condition:
-                self.producing = False
-            self.thread["_"] = None
-
-        self.thread["_"] = threading.Thread(target=produce, daemon=True)
-        self.thread["_"].start()
-
-
-class JobConsumer(object):
-
-    def __init__(self, producer, model):
-        self.producer = producer
-        self.model = model
-        self.consuming = False
-        self.interrupted = False
-        self.deque = producer.deque
-        self.thread = {"_": None}
-        self.condition = producer.condition
-
-    def stop(self):
-        self.interrupted = True
-
-    def is_alive(self):
-        return self.thread["_"] and self.thread["_"].is_alive()
-
-    def start(self):
-        if self.thread["_"]:
-            self.stop()
-            print("Stopping consumer..")
-            # Wait till previous thread stopped.
-            while self.thread["_"]:
-                pass
-
-        producer = self.producer
-        deque = self.deque
-        pauser = (lambda: not deque and producer.is_alive())
-
-        def consume():
-            condition = ConsumerCondition(self.condition, pauser)
-
-            self.interrupted = False
-            self.consuming = True
-
-            while True:
-                with condition:
-                    if not self.interrupted and (producer.producing or deque):
-                        job = deque.popleft()
-                    else:
-                        break
-
-                self.model.add_item(job)
-            # Bye
-            self.consuming = False
-            self.thread["_"] = None
-
-        self.thread["_"] = threading.Thread(target=consume, daemon=True)
-        self.thread["_"].start()
-
-
-class VersionWorkerModel(TreeModel):
-
-    COLUMNS = [
-        "asset",
-        "family",
-        "subset",
-        "version",
+    UPLOAD_COLUMNS = [
+        "project",
+        "type",
+        "detail",
+        "site",
+        "size",
+        "status",
         "progress",
-        "action",
+    ]
+
+    UploadDisplayRole = QtCore.Qt.UserRole + 20
+    UploadSortRole = QtCore.Qt.UserRole + 21
+
+    STATUS = [
+        "staging",
+        "pending",
+        "uploading",
+        "completed",
+        "failed",
     ]
 
     def __init__(self, parent=None):
-        super(VersionWorkerModel, self).__init__(parent=parent)
+        super(JobSourceModel, self).__init__(parent=parent)
+        self._producer = None
+        self._consumer = None
+        self._appended = set()
 
-        generator = MockJobGenerator()
+    def clear(self):
+        super(JobSourceModel, self).clear()
+        self._appended = set()
+
+    def is_busy(self):
+        producer = self._producer
+        consumer = self._consumer
+
+        if producer is None or consumer is None:
+            return False
+
+        return producer.producing or consumer.consuming
+
+    def stage(self, job_file):
+        """
+        Args:
+            job_file (str): JSON file
+
+        """
+        self.staging.emit()
+
+        generator = job_generator(job_file)
         producer = JobProducer(generator)
-        consumer = JobConsumer(producer, self)
+        consumer = JobConsumer(producer, consum=self._append)
+
+        # Start staging
+        producer.start()
+        consumer.start(callback=self.staged.emit)
 
         self._producer = producer
         self._consumer = consumer
 
-    def refresh(self):
+    def _append(self, data):
+        # Check duplicated
+        _id = data["_id"]
+        if _id in self._appended:
+            return
+
+        # Start
+        root = QtCore.QModelIndex()
+        last = self.rowCount(root)
+
+        self.beginInsertRows(root, last, last)
+
+        node = Node()
+        node.update(data)
+        self.add_child(node)
+        self._appended.add(_id)
+
+        self.endInsertRows()
+
+    def stop(self):
         producer = self._producer
         consumer = self._consumer
+
+        if producer is None or consumer is None:
+            return
 
         if producer.producing:
             producer.stop()
         if consumer.consuming:
             consumer.stop()
 
-        while producer.producing or consumer.consuming:
+        if producer.producing or consumer.consuming:
             # Wait till they both stopped.
-            pass
+            self.canceling.emit()
+            while producer.producing or consumer.consuming:
+                pass
+            self.canceled.emit()
 
-        self.clear()
+    def columnCount(self, parent):
+        return max(len(self.STAGING_COLUMNS), len(self.UPLOAD_COLUMNS))
 
-        producer.start()
-        consumer.start()
+    def data(self, index, role):
+        if not index.isValid():
+            return
 
-    def add_item(self, data):
-        root = QtCore.QModelIndex()
-        last = self.columnCount(root)
-        self.beginInsertRows(root, last, last)
+        if role == self.StagingDisplayRole or role == self.StagingSortRole:
+            node = index.internalPointer()
+            column = index.column()
+            key = self.STAGING_COLUMNS[column]
 
-        node = Node()
-        node.update(data)
-        node.update({
-            "progress": 0,
-            "action": "HAHA",
-        })
+            return node.get(key, None)
 
-        self.add_child(node)
+        if role == self.UploadDisplayRole or role == self.UploadSortRole:
+            node = index.internalPointer()
+            column = index.column()
+            key = self.UPLOAD_COLUMNS[column]
 
-        self.endInsertRows()
+            value = node.get(key, None)
+            if (key == "status" and
+                    value is not None and value < len(self.STATUS)):
+                return self.STATUS[value]
+
+            return node.get(key, None)
+
+        return super(JobSourceModel, self).data(index, role)
+
+    def setData(self, index, value, role):
+        """Change the data on the nodes.
+
+        Returns:
+            bool: Whether the edit was successful
+
+        """
+        if index.isValid():
+            if role == self.StagingDisplayRole:
+                node = index.internalPointer()
+                column = index.column()
+
+                key = self.STAGING_COLUMNS[column]
+                node[key] = value
+                # passing `list()` for PyQt5 (see PYSIDE-462)
+                self.dataChanged.emit(index, index, list())
+
+                return True  # must return true if successful
+
+            if role == self.UploadDisplayRole:
+                node = index.internalPointer()
+                column = index.column()
+
+                key = self.UPLOAD_COLUMNS[column]
+                node[key] = value
+                # passing `list()` for PyQt5 (see PYSIDE-462)
+                self.dataChanged.emit(index, index, list())
+
+                return True  # must return true if successful
+
+        return False
+
+
+class JobStagingProxyModel(QtCore.QSortFilterProxyModel):
+
+    COLUMNS = JobSourceModel.STAGING_COLUMNS
+    StagingDisplayRole = JobSourceModel.StagingDisplayRole
+    StagingSortRole = JobSourceModel.StagingSortRole
+
+    def __init__(self, parent=None):
+        super(JobStagingProxyModel, self).__init__(parent=parent)
+        self.setSortRole(self.StagingSortRole)
+
+    def columnCount(self, parent):
+        return len(self.COLUMNS)
+
+    def headerData(self, section, orientation, role):
+
+        if role == QtCore.Qt.DisplayRole:
+            if section < len(self.COLUMNS):
+                label = self.COLUMNS[section]
+                return "Size (MB)" if label == "size" else label.capitalize()
+
+        super(JobStagingProxyModel,
+              self).headerData(section, orientation, role)
+
+    def data(self, index, role):
+        if not index.isValid():
+            return None
+
+        if role == QtCore.Qt.DisplayRole or role == QtCore.Qt.EditRole:
+            model = self.sourceModel()
+            index = self.mapToSource(index)
+            return model.data(index, self.StagingDisplayRole)
+
+        if role == self.StagingSortRole:
+            model = self.sourceModel()
+            index = self.mapToSource(index)
+            return model.data(index, role)
+
+    def filterAcceptsRow(self, row=0, parent=QtCore.QModelIndex()):
+        model = self.sourceModel()
+        index = model.index(row, 0, parent=parent)
+
+        # Ensure index is valid
+        if not index.isValid() or index is None:
+            return True
+
+        # Get the node data and validate
+        node = model.data(index, TreeModel.NodeRole)
+
+        return node.get("status") == 0
+
+
+class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
+
+    COLUMNS = JobSourceModel.UPLOAD_COLUMNS
+    UploadDisplayRole = JobSourceModel.UploadDisplayRole
+    UploadSortRole = JobSourceModel.UploadSortRole
+
+    def __init__(self, parent=None):
+        super(JobUploadProxyModel, self).__init__(parent=parent)
+        self.setSortRole(self.UploadSortRole)
+
+    def columnCount(self, parent):
+        return len(self.COLUMNS)
+
+    def headerData(self, section, orientation, role):
+
+        if role == QtCore.Qt.DisplayRole:
+            if section < len(self.COLUMNS):
+                return self.COLUMNS[section].capitalize()
+
+        super(JobUploadProxyModel, self).headerData(section, orientation, role)
+
+    def data(self, index, role):
+        if not index.isValid():
+            return None
+
+        if role == QtCore.Qt.DisplayRole or role == QtCore.Qt.EditRole:
+            model = self.sourceModel()
+            index = self.mapToSource(index)
+            return model.data(index, self.UploadDisplayRole)
+
+        if role == self.UploadSortRole:
+            model = self.sourceModel()
+            index = self.mapToSource(index)
+            return model.data(index, role)
+
+    def filterAcceptsRow(self, row=0, parent=QtCore.QModelIndex()):
+        model = self.sourceModel()
+        index = model.index(row, 0, parent=parent)
+
+        # Ensure index is valid
+        if not index.isValid() or index is None:
+            return True
+
+        # Get the node data and validate
+        node = model.data(index, TreeModel.NodeRole)
+
+        return node.get("status") > 0

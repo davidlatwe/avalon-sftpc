@@ -1,20 +1,15 @@
 
 import os
 import contextlib
-import time
-import random
 import threading
+import json
 import pysftp
 import paramiko
 from paramiko.py3compat import decodebytes
 from multiprocessing.pool import ThreadPool
-from collections import deque
-from avalon import io, api
-
-from .lib import ProducerCondition
 
 
-class Uploader(object):
+class SFTPUploader(object):
 
     def __init__(self, host, username, password, hostkey=None, max_conn=10):
         self.host = host
@@ -109,153 +104,38 @@ def display_progress(messages):
     print("---------------------------")
 
 
-class JobGenerator(object):
+def job_generator(job_file):
+    """Generate upload jobs from input JSON file
     """
-    """
+    with open(job_file, "r") as file:
+        job_list = json.load(file)
 
-    def __init__(self):
-        self.plugin = None
-        self._jobs = dict()
+    assert isinstance(job_list, list)
 
-    def from_workfile(self, workfile=None):
+    for data in job_list:
+        files = data["files"]  # A list of (local, remote) file path tuple
+
+        # Summing file size (MB)
         """
+        totla_size = 10.0
+        for src, dst in files:
+            totla_size += round(os.path.getsize(src) / float(1024**2), 2)
         """
-        host = api.registered_host()
-        jobs = dict()
+        import random
+        totla_size = random.random() * 100
+        progress = random.randint(0, 100)
 
-        workfile = workfile or host.current_file()  # ???
-        jobs.update(self.plugin.map_workfile(workfile))
+        job = {
+            "_id": data["_id"],
+            "project": data["project"],
+            "type": data["type"],
+            "detail": data["detail"],
+            "site": data["site"],
+            "count": len(files),
+            "size": totla_size,
+            "files": files,
+            "progress": progress,
+            "status": 0,
+        }
 
-        for jb in self.plugin.additionals:
-            jobs.update(jb())
-
-        version_ids = set()
-        for container in host.ls():
-            id = container["versionId"]
-            if id not in version_ids:
-                version_ids.add(id)
-
-        def _collect_versions():
-            for id in version_ids:
-                jobs.update(self.collect_versions(id))
-
-        threading.Thread(target=_collect_versions).start()
-
-        return jobs
-
-    def collect_versions(self, version_id):
-        """Need to refactor, since others may handle dependencies differently
-        """
-        version_doc = io.find_one({"_id": io.ObjectId(version_id)})
-
-        jobs = dict()
-
-        all_version_ids = list(self.dependencies(version_doc).keys())
-
-        for representation in io.find({"parent": {"$in": all_version_ids}}):
-            jobs.update(self.plugin.map_representation(representation))
-
-        return jobs
-
-    def dependencies(self, version, deps=None):
-        """
-        """
-        deps = deps or dict()
-        version_id = version["_id"]
-
-        if version_id in deps:
-            return
-
-        deps[version["_id"]] = version
-
-        for dependency_id in version["data"]["dependencies"]:
-            dep_version_id = io.ObjectId(dependency_id)
-            if dep_version_id in deps:
-                continue
-
-            dep_version = io.find_one({"_id": dep_version_id})
-            self.dependencies(dep_version, deps)
-
-            # Patching textures
-            if "reveries.texture" in dep_version["data"]["families"]:
-                for pre_version in io.find({"parent": version["parent"],
-                                            "name": {"$lt": version["name"]}},
-                                           sort=[("name", -1)]):
-
-                    deps[pre_version["_id"]] = pre_version
-
-                    pre_repr = io.find_one({"parent": pre_version["_id"]})
-                    if "fileInventory" not in pre_repr["data"]:
-                        break
-
-        return deps
-
-
-class MockUploader(object):
-
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def _process(self, jobs):
-        pass
-
-    def upload(self, jobs):
-        pass
-
-
-class MockJobGenerator(object):
-
-    def __init__(self):
-        self.interrupted = False
-
-    def stop(self):
-        self.interrupted = True
-
-    def start(self):
-        self.interrupted = False
-
-        # Open subprocess, mock open scene
-
-        # Also mock additional jobs
-
-        src_tmp = "/local/Proj/{asset}/pub/{subset}/{version}/file.%04d.dum"
-        dst_tmp = "/remote/Proj/{asset}/pub/{subset}/{version}/file.%04d.dum"
-
-        assets = [
-            "tom",
-            "david",
-            "cat",
-            "house",
-        ]
-        families = [
-            "model",
-            "pointcache",
-            "look"
-        ]
-        subsets = [
-            "Default",
-            "StyleA",
-            "StyleB",
-        ]
-
-        for asset in assets:
-            for family in families:
-                for subset in subsets:
-                    for version in range(1, 4):
-                        job = {
-                            "asset": asset,
-                            "family": family,
-                            "subset": subset,
-                            "version": version * random.randint(1, 5),
-                        }
-                        src = src_tmp.format(**job)
-                        dst = dst_tmp.format(**job)
-
-                        job["content"] = (src, dst)
-
-                        time.sleep(random.random() * 0.2)
-
-                        if self.interrupted:
-                            return
-
-                        yield job
+        yield job
