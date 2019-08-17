@@ -29,14 +29,13 @@ class JobSourceModel(TreeModel):
         "project",
         "type",
         "detail",
-        "site",
-        "size",
         "status",
         "progress",
     ]
 
     UploadDisplayRole = QtCore.Qt.UserRole + 20
     UploadSortRole = QtCore.Qt.UserRole + 21
+    UploadProgressRole = QtCore.Qt.UserRole + 22
 
     STATUS = [
         "staging",
@@ -147,6 +146,10 @@ class JobSourceModel(TreeModel):
                 return self.STATUS[value]
 
             return node.get(key, None)
+
+        if role == self.UploadProgressRole:
+            node = index.internalPointer()
+            return node.get("progress", 0)
 
         return super(JobSourceModel, self).data(index, role)
 
@@ -279,5 +282,20 @@ class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
 
         # Get the node data and validate
         node = model.data(index, TreeModel.NodeRole)
+
+        if node.get("status") > 0:
+            import threading
+            # Testing...
+            def update():
+                if node["progress"] >= 100:
+                    return
+                node["progress"] += 1
+                # self.dataChanged.emit(index, index, list())
+                self.parent().update()
+                threading.Timer(0.1, update).start()
+
+            update()
+
+            return True
 
         return node.get("status") > 0

@@ -1,6 +1,7 @@
 
 from avalon.vendor.Qt import QtWidgets, QtCore
 from .model import JobSourceModel, JobStagingProxyModel, JobUploadProxyModel
+from .delegates import ProgressDelegate
 
 
 class JobWidget(QtWidgets.QWidget):
@@ -17,7 +18,7 @@ class JobWidget(QtWidgets.QWidget):
         #
         model = JobSourceModel()
         staging_proxy = JobStagingProxyModel()
-        upload_proxy = JobUploadProxyModel()
+        upload_proxy = JobUploadProxyModel(self)
 
         def proxy_setup(proxy):
             proxy.setSourceModel(model)
@@ -55,6 +56,10 @@ class JobWidget(QtWidgets.QWidget):
 
         view_setup(staging_view, self.staging_proxy)
         view_setup(upload_view, self.upload_proxy)
+
+        progress_delegate = ProgressDelegate(upload_view)
+        column = self.model.UPLOAD_COLUMNS.index("progress")
+        upload_view.setItemDelegateForColumn(column, progress_delegate)
 
         staging_view.customContextMenuRequested.connect(self.on_staging_menu)
         upload_view.customContextMenuRequested.connect(self.on_upload_menu)
@@ -182,6 +187,7 @@ class JobWidget(QtWidgets.QWidget):
 
         for index in source_selection.indexes():
             if index.column() == status_column:
+                print("X")
                 model.setData(index, 1, role=model.UploadDisplayRole)
 
     def act_upload_all(self):
@@ -199,7 +205,7 @@ class JobWidget(QtWidgets.QWidget):
             indexes.append(index)
 
         for index in indexes:
-            model.setData(index, 2, role=model.UploadDisplayRole)
+            model.setData(index, 1, role=model.UploadDisplayRole)
 
     def act_clear(self):
         """Clear all staging jobs
