@@ -40,14 +40,14 @@ class ProgressDelegate(QtWidgets.QStyledItemDelegate):
         model = proxy.sourceModel()
 
         self.proxy = proxy
-        self.UploadProgressRole = model.UploadProgressRole
+        self.UploadDisplayRole = model.UploadDisplayRole
         self.CE_ProgressBar = QtWidgets.QStyle.CE_ProgressBar
 
     def paint(self, painter, option, index):
         super(ProgressDelegate, self).paint(painter, option, index)
 
         index = self.proxy.mapToSource(index)
-        progress = index.data(self.UploadProgressRole)
+        progress = index.data(self.UploadDisplayRole)
 
         opt_bar = self.opt_bar
 

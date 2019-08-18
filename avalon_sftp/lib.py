@@ -18,9 +18,11 @@ def get_site(site_name):
     default_sites = os.path.dirname(__file__) + "/sites"
     sites = os.getenv("AVALON_SFTP_SITES", default_sites)
 
-    site_cfg = sites + "%s.cfg" % site_name
+    site_cfg = sites + "/%s.cfg" % site_name
     if not os.path.isfile(site_cfg):
-        raise Exception("Site %s configuration file not found." % site_name)
+        # (TODO) This will crash app. Maybe an warning ?
+        raise Exception("Site '%s' configuration file not found: %s"
+                        "" % (site_name, site_cfg))
 
     # Read settings from a configuration file
     parser = ConfigParser()
@@ -127,24 +129,23 @@ class JobExporter(object):
         with open(out, "w") as file:
             json.dump(self.jobs, file, indent=4)
 
-    def add_job(self, files, type, detail, job_id=None):
+    def add_job(self, files, type, description):
         """
 
         Args:
             files (list)
             type (str)
-            detail (str)
+            description (str)
 
         """
         project = api.Session["AVALON_PROJECT"]
         site = api.Session["AVALON_SFTP"]
 
         job = {
-            "_id": job_id or ".".join([project, type, detail, site]),
             "project": project,
             "site": site,
             "type": type,
-            "detail": detail,
+            "description": description,
             "files": files
         }
         self.jobs.append(job)
@@ -189,8 +190,8 @@ class JobExporter(object):
         # Add workfile job
         self.add_job(files=[(workfile, remote_path)],
                      type="Workfile",
-                     detail="%s - %s" % (session["AVALON_ASSET"],
-                                         os.path.basename(workfile)))
+                     description="%s - %s" % (session["AVALON_ASSET"],
+                                              os.path.basename(workfile)))
 
         # Additional jobs
         for job in additional_jobs:
@@ -257,14 +258,14 @@ class JobExporter(object):
             return
 
         # Add job
-        detail = "[{asset}] {subset}.v{ver:0>3} - {repr}"
+        description = ("[{asset}] {subset}.v{ver:0>3} - {repr}"
+                       "".format(asset=asset["name"],
+                                 subset=subset["name"],
+                                 ver=version["name"],
+                                 repr=representation["name"]))
         self.add_job(files=jobs,
                      type="Representation",
-                     detail=detail.format(asset=asset["name"],
-                                          subset=subset["name"],
-                                          ver=version["name"],
-                                          repr=representation["name"]),
-                     job_id=str(representation_id))
+                     description=description)
 
 
 class ProducerCondition(object):

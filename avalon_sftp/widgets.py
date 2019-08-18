@@ -18,7 +18,7 @@ class JobWidget(QtWidgets.QWidget):
         #
         model = JobSourceModel()
         staging_proxy = JobStagingProxyModel()
-        upload_proxy = JobUploadProxyModel(self)
+        upload_proxy = JobUploadProxyModel()
 
         def proxy_setup(proxy):
             proxy.setSourceModel(model)
@@ -111,12 +111,18 @@ class JobWidget(QtWidgets.QWidget):
         self.model.canceling.connect(self.on_canceling)
         self.model.canceled.connect(self.on_canceled)
 
+        self.timer = self.startTimer(100)
+
+    def timerEvent(self, event):
+        if event.timerId() == self.timer:
+            self.update()
+
     def on_staging_menu(self, point):
         point_index = self.staging_view.indexAt(point)
         if not point_index.isValid():
             return
 
-        if self.model.is_busy():
+        if self.model.is_staging():
             return
 
         menu = QtWidgets.QMenu(self)
@@ -187,7 +193,6 @@ class JobWidget(QtWidgets.QWidget):
 
         for index in source_selection.indexes():
             if index.column() == status_column:
-                print("X")
                 model.setData(index, 1, role=model.UploadDisplayRole)
 
     def act_upload_all(self):
@@ -211,4 +216,7 @@ class JobWidget(QtWidgets.QWidget):
         """Clear all staging jobs
         Stage Menu Action
         """
-        self.model.clear()
+        # self.model.clear()
+
+        # Partial clear, if in upload area, should not be removed,
+        # set state to -1.

@@ -1,12 +1,122 @@
 
+import os
+import hashlib
+import threading
+from multiprocessing import Queue
+from weakref import WeakValueDictionary
+
+from avalon import io
 from avalon.vendor.Qt import QtCore
 from avalon.tools.projectmanager.model import TreeModel, Node
 
-from .lib import JobProducer, JobConsumer
-from .worker import job_generator
+from .worker import PackageProducer, MockUploader
 
 
-class JobSourceModel(TreeModel):
+class JobItem(object):
+
+    __slots__ = ("_id", "src", "dst", "site", "transferred", "__weakref__")
+
+    def __init__(self, id, src, dst, site):
+        self._id = id
+        self.site = site
+        self.src = src
+        self.dst = dst
+        self.transferred = 0
+
+
+class PackageItem(Node):
+    """
+    """
+
+    def __init__(self, data):
+        super(PackageItem, self).__init__(data)
+
+        site = data["site"]
+
+        self.jobs = list()
+        self.byte = 0  # To comput progress
+        self.site = site
+        self.hash = site  # As prefix
+        # Ensure unique and sort for hashing
+        files = sorted(set(data["files"]))
+        self._digest(files)
+
+    def _digest(self, files):
+        """To get package's identity and pack jobs
+        * Analyze files to prevent duplicate package
+        * Spawning job object for uploader to update progress on each file
+        """
+        jobs = list()
+        total_size = 0
+        hash_obj = hashlib.sha512()
+
+        for src, dst in files:
+            hash_obj.update(src.encode())
+            hash_obj.update(dst.encode())
+
+            # Making job object
+            job_id = str(io.ObjectId())
+            jobs.append(JobItem(job_id, src, dst, self.site))
+
+            # Summing file size
+            # total_size += os.path.getsize(src)
+            total_size += 1000  # Testing, each job's size is 1000
+
+        if total_size == 0:
+            raise Exception("Package size is 0, this should not happen.")
+
+        self.byte = total_size
+        self.jobs = jobs
+        self.hash += str(hash_obj.digest())
+
+        data = {
+            "status": 0,
+            "count": len(jobs),
+            "size": round(total_size / float(1024**2), 2),  # (MB)
+        }
+        self.update(data)
+
+    def progress(self):
+        """Return transfer progress percentage
+
+        Returns:
+            float: Upload progress percentage
+
+        """
+        transferred = 0
+        for job in self.jobs:
+            transferred += job.transferred
+
+        if transferred > 0:
+            if transferred < self.byte:
+                self["status"] = 2
+            else:
+                self["status"] = 3
+
+        return transferred / self.byte * 100
+
+    def __getitem__(self, key):
+        if key == "progress":
+            return self.progress()
+        return super(PackageItem, self).__getitem__(key)
+
+    def get(self, key, default=None):
+        try:
+            return self.__getitem__(key)
+        except KeyError:
+            return default
+
+    def __eq__(self, other):
+        # Assume we only compare with other `PackageItem` instance
+        return self.hash == other.hash
+
+    def __hash__(self):
+        return self.hash
+
+
+class JobSourceModel(TreeModel):  # QueueModel ?
+
+    MAX_CONNECTIONS = 10
 
     staging = QtCore.Signal()
     staged = QtCore.Signal()
@@ -16,7 +126,7 @@ class JobSourceModel(TreeModel):
     STAGING_COLUMNS = [
         "project",
         "type",
-        "detail",
+        "description",
         "site",
         "count",
         "size",
@@ -28,14 +138,13 @@ class JobSourceModel(TreeModel):
     UPLOAD_COLUMNS = [
         "project",
         "type",
-        "detail",
+        "description",
         "status",
         "progress",
     ]
 
     UploadDisplayRole = QtCore.Qt.UserRole + 20
     UploadSortRole = QtCore.Qt.UserRole + 21
-    UploadProgressRole = QtCore.Qt.UserRole + 22
 
     STATUS = [
         "staging",
@@ -47,22 +156,20 @@ class JobSourceModel(TreeModel):
 
     def __init__(self, parent=None):
         super(JobSourceModel, self).__init__(parent=parent)
-        self._producer = None
-        self._consumer = None
-        self._appended = set()
 
-    def clear(self):
-        super(JobSourceModel, self).clear()
-        self._appended = set()
+        self.jobsref = WeakValueDictionary()
+        self.pendings = Queue()
+        self.progress = Queue()
+        self.producer = PackageProducer()
+        self.consumers = [MockUploader(self.pendings, self.progress)
+                          for i in range(self.MAX_CONNECTIONS)]
+        self.consume()
 
-    def is_busy(self):
-        producer = self._producer
-        consumer = self._consumer
+    def is_staging(self):
+        return self.producer.producing
 
-        if producer is None or consumer is None:
-            return False
-
-        return producer.producing or consumer.consuming
+    def is_uploading(self):
+        return any(c.consuming for c in self.consumers)
 
     def stage(self, job_file):
         """
@@ -72,21 +179,17 @@ class JobSourceModel(TreeModel):
         """
         self.staging.emit()
 
-        generator = job_generator(job_file)
-        producer = JobProducer(generator)
-        consumer = JobConsumer(producer, consum=self._append)
-
         # Start staging
-        producer.start()
-        consumer.start(callback=self.staged.emit)
-
-        self._producer = producer
-        self._consumer = consumer
+        self.producer.start(resource=job_file,
+                            on_produce=self._append,
+                            on_complete=self.staged.emit)
 
     def _append(self, data):
+
+        package = PackageItem(data)
+
         # Check duplicated
-        _id = data["_id"]
-        if _id in self._appended:
+        if package in self._root_node.children():
             return
 
         # Start
@@ -94,32 +197,41 @@ class JobSourceModel(TreeModel):
         last = self.rowCount(root)
 
         self.beginInsertRows(root, last, last)
-
-        node = Node()
-        node.update(data)
-        self.add_child(node)
-        self._appended.add(_id)
-
+        self.add_child(package)
         self.endInsertRows()
 
     def stop(self):
-        producer = self._producer
-        consumer = self._consumer
+        """Stop all activities"""
+        if self.producer.producing:
+            self.producer.stop()
 
-        if producer is None or consumer is None:
-            return
-
-        if producer.producing:
-            producer.stop()
-        if consumer.consuming:
+        for consumer in self.consumers:
             consumer.stop()
 
-        if producer.producing or consumer.consuming:
+        if self.is_staging() or self.is_uploading():
             # Wait till they both stopped.
             self.canceling.emit()
-            while producer.producing or consumer.consuming:
+            while self.is_staging() or self.is_uploading():
                 pass
             self.canceled.emit()
+
+    def pending(self, package):
+        for job in package.jobs:
+            self.pendings.put(job)
+            self.jobsref[job._id] = job
+
+    def consume(self):
+        for c in self.consumers:
+            c.start()
+
+        def update():
+            while True:
+                id, progress = self.progress.get()
+                job = self.jobsref[id]
+                job.transferred = progress
+
+        updator = threading.Thread(target=update, daemon=True)
+        updator.start()
 
     def columnCount(self, parent):
         return max(len(self.STAGING_COLUMNS), len(self.UPLOAD_COLUMNS))
@@ -147,10 +259,6 @@ class JobSourceModel(TreeModel):
 
             return node.get(key, None)
 
-        if role == self.UploadProgressRole:
-            node = index.internalPointer()
-            return node.get("progress", 0)
-
         return super(JobSourceModel, self).data(index, role)
 
     def setData(self, index, value, role):
@@ -177,6 +285,15 @@ class JobSourceModel(TreeModel):
                 column = index.column()
 
                 key = self.UPLOAD_COLUMNS[column]
+                if key == "status":
+                    if value == 1:
+                        # Push to pending
+                        self.pending(node)
+
+                if key == "progress":
+                    # `progress` should not be set
+                    return
+
                 node[key] = value
                 # passing `list()` for PyQt5 (see PYSIDE-462)
                 self.dataChanged.emit(index, index, list())
@@ -280,22 +397,6 @@ class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
         if not index.isValid() or index is None:
             return True
 
-        # Get the node data and validate
         node = model.data(index, TreeModel.NodeRole)
-
-        if node.get("status") > 0:
-            import threading
-            # Testing...
-            def update():
-                if node["progress"] >= 100:
-                    return
-                node["progress"] += 1
-                # self.dataChanged.emit(index, index, list())
-                self.parent().update()
-                threading.Timer(0.1, update).start()
-
-            update()
-
-            return True
 
         return node.get("status") > 0
