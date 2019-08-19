@@ -110,4 +110,4 @@ venv.bak/
 
 
 # SFTP site configs
-avalon_sftp/sites/*.cfg
+avalon_sftpc/sites/*.cfg
