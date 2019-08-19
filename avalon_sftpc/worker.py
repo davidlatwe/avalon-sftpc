@@ -130,8 +130,7 @@ class PackageProducer(object):
                 hash_obj.update(dst.encode())
 
                 # Summing file size
-                # total_size += os.path.getsize(src)
-                total_size += 1000  # Testing, each job's size is 1000
+                total_size += os.path.getsize(src)
 
             if total_size == 0:
                 raise Exception("Package size is 0, this should not happen.")
