@@ -1,6 +1,5 @@
 
 import os
-import time
 import contextlib
 import hashlib
 import threading
@@ -154,6 +153,9 @@ class PackageProducer(object):
 
 class MockUploader(Process):
 
+    mock_upload_speed = 10000
+    mock_error_rate = 0.99
+
     def __init__(self, jobs, update, process_id):
         super(MockUploader, self).__init__()
         self.jobs = jobs
@@ -165,7 +167,7 @@ class MockUploader(Process):
         self.jobs.put(_STOP)
 
     def run(self):
-        import random
+        import random  # For mocking error
 
         while True:
             job = self.jobs.get()
@@ -173,14 +175,27 @@ class MockUploader(Process):
             if job == _STOP:
                 break
 
+            src, dst = job.content
+
+            # `JobItem` does not know the file size, since
+            # we do not need that info in real uploader.
+            to_be_transferred = os.path.getsize(src)
+
+            # Compute
+            chunk_size = self.mock_upload_speed
+            steps = int(to_be_transferred / chunk_size)
+            remain = to_be_transferred % chunk_size
+            chunks = [chunk_size] * steps + [remain]
+
             try:
-                for i in range(100):
-                    time.sleep(0.1)
-                    job.transferred += 10
+                for chunk in chunks:
+                    job.transferred += chunk
                     self.update.put((job._id, job.transferred, 0, self._id))
 
-                if random.random() > 0.95:
-                    raise IOError("Some error.")
+                    # Simulate error
+                    if random.random() > self.mock_error_rate:
+                        raise IOError("This is not what I want.")
+
             except Exception:
                 self.update.put((job._id, job.transferred, -1, self._id))
             else:
