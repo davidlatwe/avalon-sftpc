@@ -11,7 +11,7 @@ from paramiko.py3compat import decodebytes
 from multiprocessing import Process
 
 from . import app
-from .lib import get_site
+from .util import get_site
 
 
 _STOP = "STOP"
