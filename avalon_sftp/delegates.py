@@ -15,7 +15,7 @@ class ProgressDelegate(QtWidgets.QStyledItemDelegate):
                 background-color: #363636;
             }
             QProgressBar::chunk {
-                background-color: #57B6DA;
+                background-color: #95A1A5;
                 border-radius: 4px;
                 margin: 1px;
             }
@@ -47,16 +47,18 @@ class ProgressDelegate(QtWidgets.QStyledItemDelegate):
         super(ProgressDelegate, self).paint(painter, option, index)
 
         index = self.proxy.mapToSource(index)
-        progress = index.data(self.UploadDisplayRole)
+        progress, uploaded, total = index.data(self.UploadDisplayRole)
 
         opt_bar = self.opt_bar
 
         opt_bar.rect = option.rect
         opt_bar.rect.setHeight(option.rect.height() - 5)
         opt_bar.rect.setTop(option.rect.top() + 5)
+        opt_bar.rect.setLeft(option.rect.left() + 26)
+        opt_bar.rect.setRight(option.rect.right() - 5)
 
         opt_bar.progress = int(progress)
-        opt_bar.text = " %.2f %% " % progress
+        opt_bar.text = "  %.2f %%  (%d/%d)  " % (progress, uploaded, total)
 
         self.style.drawControl(self.CE_ProgressBar,
                                opt_bar,

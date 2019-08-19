@@ -33,7 +33,7 @@ def get_site(site_name):
         "host": get("host"),
         "username": get("username"),
         "password": get("password"),
-        "hostPublicKey": b"".join(get("hostPublicKey").encode().split()),
+        "hostkey": b"".join(get("hostkey").encode().split()),
     }
 
 

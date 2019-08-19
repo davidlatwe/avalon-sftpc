@@ -1,4 +1,5 @@
 
+import os
 from avalon.vendor.Qt import QtWidgets, QtCore
 from .model import JobSourceModel, JobStagingProxyModel, JobUploadProxyModel
 from .delegates import ProgressDelegate
@@ -6,10 +7,8 @@ from .delegates import ProgressDelegate
 
 class JobWidget(QtWidgets.QWidget):
 
-    staging = QtCore.Signal()
-    staged = QtCore.Signal()
-    canceling = QtCore.Signal()
-    canceled = QtCore.Signal()
+    echo = QtCore.Signal(str)
+    echo_anim = QtCore.Signal(list, int)
 
     def __init__(self, parent=None):
         super(JobWidget, self).__init__(parent=parent)
@@ -63,6 +62,9 @@ class JobWidget(QtWidgets.QWidget):
 
         staging_view.customContextMenuRequested.connect(self.on_staging_menu)
         upload_view.customContextMenuRequested.connect(self.on_upload_menu)
+        # Hide `status` column, since we now have an icon before progress bar
+        upload_header = upload_view.header()
+        upload_header.hideSection(3)
 
         self.staging_view = staging_view
         self.upload_view = upload_view
@@ -111,10 +113,13 @@ class JobWidget(QtWidgets.QWidget):
         self.model.canceling.connect(self.on_canceling)
         self.model.canceled.connect(self.on_canceled)
 
-        self.timer = self.startTimer(100)
+        # Timer
+        #
+        self._update_timer = self.startTimer(100)
 
     def timerEvent(self, event):
-        if event.timerId() == self.timer:
+        # (NOTE) We need this to force progress bar update
+        if event.timerId() == self._update_timer:
             self.update()
 
     def on_staging_menu(self, point):
@@ -158,25 +163,52 @@ class JobWidget(QtWidgets.QWidget):
 
     def stage(self):
         job_file = self.line_input.text()
-        job_file = r"C:\Users\david\Dropbox\github\AVALON\avalon-sftp\lighting_v0036_patrick.sftp.job"
+
+        if not job_file:
+            self.echo.emit("Empty file path.")
+            return
+
+        if not os.path.isfile(job_file):
+            self.echo.emit("File does not exist.")
+            return
+
+        # (TODO) Need to catch error inside the package producer
+        #        thread, maybe a global error pipe ?
         self.model.stage(job_file)
 
     def on_staging(self):
-        self.staging.emit()
+        anim_message = [
+            "Staging.....",
+            "Staging....",
+            "Staging...",
+            "Staging..",
+            "Staging.",
+        ]
+        print(anim_message[0])
+        self.echo_anim.emit(anim_message, 200)
+
         self.send_btn.setEnabled(False)
         self.line_input.setEnabled(False)
 
     def on_staged(self):
-        self.staged.emit()
+        self.echo.emit("Complete !")
+
         self.send_btn.setEnabled(True)
         self.line_input.setEnabled(True)
         self.line_input.setText("")
 
     def on_canceling(self):
-        self.canceling.emit()
+        anim_message = [
+            "Canceling...",
+            "Canceling..",
+            "Canceling.",
+        ]
+        print(anim_message[0])
+        self.echo_anim.emit(anim_message, 600)
 
     def on_canceled(self):
-        self.canceled.emit()
+        self.echo.emit("Canceled.")
+
         self.send_btn.setEnabled(True)
         self.line_input.setEnabled(True)
 
@@ -216,7 +248,4 @@ class JobWidget(QtWidgets.QWidget):
         """Clear all staging jobs
         Stage Menu Action
         """
-        # self.model.clear()
-
-        # Partial clear, if in upload area, should not be removed,
-        # set state to -1.
+        self.model.clear_stage()

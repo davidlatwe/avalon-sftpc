@@ -1,5 +1,5 @@
-# avalon-sftp
-Tools for uploading Avalon workfile and depending versions to remote space via SFTP
+# avalon-sftpc
+Avalon SFTP Client, for uploading Avalon workfile and depending versions to remote site via SFTP
 
 ### Requires
 * `pysftp`

@@ -7,6 +7,7 @@ from .widgets import JobWidget
 
 module = sys.modules[__name__]
 module.window = None
+module.demo = False
 
 
 class Window(QtWidgets.QDialog):
@@ -31,10 +32,8 @@ class Window(QtWidgets.QDialog):
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(body)
 
-        stage.staging.connect(self.on_staging)
-        stage.staged.connect(self.on_staged)
-        stage.canceling.connect(self.on_canceling)
-        stage.canceled.connect(self.on_canceled)
+        stage.echo.connect(self.echo)
+        stage.echo_anim.connect(self.echo)
 
         self.stage = stage
         self.messenger = messenger
@@ -61,41 +60,17 @@ class Window(QtWidgets.QDialog):
             messenger.setText(str(message))
             print(message)
             tools.lib.schedule(lambda: messenger.setText(""),
-                               5000,
+                               10000,
                                channel="message")
 
-    def on_staging(self):
-        anim_message = [
-            "Staging.....",
-            "Staging....",
-            "Staging...",
-            "Staging..",
-            "Staging.",
-        ]
-        print(anim_message[0])
-        self.echo(anim_message, repeat=200)
 
-    def on_staged(self):
-        self.echo("Complete !")
-
-    def on_canceling(self):
-        anim_message = [
-            "Canceling...",
-            "Canceling..",
-            "Canceling.",
-        ]
-        print(anim_message[0])
-        self.echo(anim_message, repeat=600)
-
-    def on_canceled(self):
-        self.echo("Canceled.")
-
-
-def show(debug=False, parent=None):
+def show(debug=False, demo=False, parent=None):
     """Display Uploader GUI
 
     Arguments:
         debug (bool, optional): Run uploader in debug-mode,
+            defaults to False
+        demo (bool, optional): Run uploader in demo-mode,
             defaults to False
         parent (QtCore.QObject, optional): The Qt object to parent to.
 
@@ -126,6 +101,9 @@ def show(debug=False, parent=None):
     if debug:
         import traceback
         sys.excepthook = lambda typ, val, tb: traceback.print_last()
+
+    if demo:
+        module.demo = demo
 
     with tools.lib.application():
         window = Window(parent)

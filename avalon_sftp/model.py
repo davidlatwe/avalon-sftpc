@@ -1,27 +1,29 @@
 
-import os
-import hashlib
 import threading
 from multiprocessing import Queue
 from weakref import WeakValueDictionary
 
 from avalon import io
+from avalon.vendor import qtawesome
 from avalon.vendor.Qt import QtCore
 from avalon.tools.projectmanager.model import TreeModel, Node
 
-from .worker import PackageProducer, MockUploader
+from .worker import PackageProducer, uploader
 
 
 class JobItem(object):
+    """
+    """
 
-    __slots__ = ("_id", "src", "dst", "site", "transferred", "__weakref__")
+    __slots__ = ("_id", "site", "content", "transferred", "status",
+                 "__weakref__")
 
-    def __init__(self, id, src, dst, site):
-        self._id = id
+    def __init__(self, job_id, site, content):
+        self._id = str(job_id)
         self.site = site
-        self.src = src
-        self.dst = dst
+        self.content = content
         self.transferred = 0
+        self.status = 0
 
 
 class PackageItem(Node):
@@ -29,52 +31,15 @@ class PackageItem(Node):
     """
 
     def __init__(self, data):
+        self.byte = data.pop("byte")  # To comput progress
+        self.hash = data.pop("hash")
+        self.jobs = [JobItem(io.ObjectId(), data["site"], content)
+                     for content in data["files"]]
+        self.total = len(self.jobs)
+
         super(PackageItem, self).__init__(data)
 
-        site = data["site"]
-
-        self.jobs = list()
-        self.byte = 0  # To comput progress
-        self.site = site
-        self.hash = site  # As prefix
-        # Ensure unique and sort for hashing
-        files = sorted(set(data["files"]))
-        self._digest(files)
-
-    def _digest(self, files):
-        """To get package's identity and pack jobs
-        * Analyze files to prevent duplicate package
-        * Spawning job object for uploader to update progress on each file
-        """
-        jobs = list()
-        total_size = 0
-        hash_obj = hashlib.sha512()
-
-        for src, dst in files:
-            hash_obj.update(src.encode())
-            hash_obj.update(dst.encode())
-
-            # Making job object
-            job_id = str(io.ObjectId())
-            jobs.append(JobItem(job_id, src, dst, self.site))
-
-            # Summing file size
-            # total_size += os.path.getsize(src)
-            total_size += 1000  # Testing, each job's size is 1000
-
-        if total_size == 0:
-            raise Exception("Package size is 0, this should not happen.")
-
-        self.byte = total_size
-        self.jobs = jobs
-        self.hash += str(hash_obj.digest())
-
-        data = {
-            "status": 0,
-            "count": len(jobs),
-            "size": round(total_size / float(1024**2), 2),  # (MB)
-        }
-        self.update(data)
+        self["progress"] = self.progress
 
     def progress(self):
         """Return transfer progress percentage
@@ -83,28 +48,32 @@ class PackageItem(Node):
             float: Upload progress percentage
 
         """
+        uploaded = 0
+        errored = False
         transferred = 0
+
         for job in self.jobs:
             transferred += job.transferred
 
+            if job.status == 1:
+                uploaded += 1
+
+            if job.status == -1:
+                errored = True
+
         if transferred > 0:
             if transferred < self.byte:
-                self["status"] = 2
+                if not errored:
+                    self["status"] = 2  # Uploading
+                else:
+                    self["status"] = 3  # Errored
             else:
-                self["status"] = 3
+                if not errored:
+                    self["status"] = 4  # Completed
+                else:
+                    self["status"] = 5  # End with error
 
-        return transferred / self.byte * 100
-
-    def __getitem__(self, key):
-        if key == "progress":
-            return self.progress()
-        return super(PackageItem, self).__getitem__(key)
-
-    def get(self, key, default=None):
-        try:
-            return self.__getitem__(key)
-        except KeyError:
-            return default
+        return transferred / self.byte * 100, uploaded, self.total
 
     def __eq__(self, other):
         # Assume we only compare with other `PackageItem` instance
@@ -139,31 +108,49 @@ class JobSourceModel(TreeModel):  # QueueModel ?
         "project",
         "type",
         "description",
-        "status",
+        "status",  # This has been hidden
         "progress",
     ]
 
     UploadDisplayRole = QtCore.Qt.UserRole + 20
     UploadSortRole = QtCore.Qt.UserRole + 21
+    UploadDecorationRole = QtCore.Qt.UserRole + 22
 
     STATUS = [
         "staging",
         "pending",
         "uploading",
+        "errored",
         "completed",
-        "failed",
+        "endWithError",
+    ]
+
+    STATUS_ICON = [
+        ("meh-o", "#999999"),
+        ("clock-o", "#95A1A5"),
+        ("paper-plane", "#52D77B"),
+        ("paper-plane", "#ECA519"),
+        ("check-circle", "#5AB6E4"),
+        ("warning", "#EC534E"),
     ]
 
     def __init__(self, parent=None):
         super(JobSourceModel, self).__init__(parent=parent)
 
+        _Uploader = uploader()
+
         self.jobsref = WeakValueDictionary()
         self.pendings = Queue()
         self.progress = Queue()
         self.producer = PackageProducer()
-        self.consumers = [MockUploader(self.pendings, self.progress)
-                          for i in range(self.MAX_CONNECTIONS)]
+        self.consumers = [_Uploader(self.pendings, self.progress, id)
+                          for id in range(self.MAX_CONNECTIONS)]
         self.consume()
+
+        self.status_icon = [
+            qtawesome.icon("fa.{}".format(icon), color=color)
+            for icon, color in self.STATUS_ICON
+        ]
 
     def is_staging(self):
         return self.producer.producing
@@ -189,8 +176,13 @@ class JobSourceModel(TreeModel):  # QueueModel ?
         package = PackageItem(data)
 
         # Check duplicated
-        if package in self._root_node.children():
-            return
+        all_nodes = self._root_node.children()
+        if package in all_nodes:
+            # If duplicated package has completed, allow to stage
+            # again.
+            find = list(reversed(all_nodes))
+            if find[find.index(package)]["status"] <= 2:
+                return
 
         # Start
         root = QtCore.QModelIndex()
@@ -226,12 +218,35 @@ class JobSourceModel(TreeModel):  # QueueModel ?
 
         def update():
             while True:
-                id, progress = self.progress.get()
+                id, progress, status, process_id = self.progress.get()
                 job = self.jobsref[id]
                 job.transferred = progress
+                job.status = status
+
+                if status == 1:
+                    self.consumers[process_id].consuming = False
+                else:
+                    self.consumers[process_id].consuming = True
 
         updator = threading.Thread(target=update, daemon=True)
         updator.start()
+
+    def clear_stage(self):
+        all_nodes = self._root_node.children()
+
+        if all(n.get("status", 0) == 0 for n in all_nodes):
+            # All staged, clear all
+            self.clear()
+            return
+
+        # Remove staged only
+        root = QtCore.QModelIndex()
+        for node in list(all_nodes):
+            if node.get("status", 0) == 0:
+                row = node.row()
+                self.beginRemoveRows(root, row, row)
+                all_nodes.remove(node)
+                self.endRemoveRows()
 
     def columnCount(self, parent):
         return max(len(self.STAGING_COLUMNS), len(self.UPLOAD_COLUMNS))
@@ -253,11 +268,16 @@ class JobSourceModel(TreeModel):  # QueueModel ?
             key = self.UPLOAD_COLUMNS[column]
 
             value = node.get(key, None)
-            if (key == "status" and
-                    value is not None and value < len(self.STATUS)):
-                return self.STATUS[value]
+            if key == "progress":
+                return value()
+            return value
 
-            return node.get(key, None)
+        if role == self.UploadDecorationRole:
+            # Put icon to 'progress' column
+            if index.column() == 4:
+                node = index.internalPointer()
+                status = node.get("status", 0)
+                return self.status_icon[status]
 
         return super(JobSourceModel, self).data(index, role)
 
@@ -359,6 +379,7 @@ class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
     COLUMNS = JobSourceModel.UPLOAD_COLUMNS
     UploadDisplayRole = JobSourceModel.UploadDisplayRole
     UploadSortRole = JobSourceModel.UploadSortRole
+    UploadDecorationRole = JobSourceModel.UploadDecorationRole
 
     def __init__(self, parent=None):
         super(JobUploadProxyModel, self).__init__(parent=parent)
@@ -389,6 +410,11 @@ class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
             index = self.mapToSource(index)
             return model.data(index, role)
 
+        if role == QtCore.Qt.DecorationRole:
+            model = self.sourceModel()
+            index = self.mapToSource(index)
+            return model.data(index, self.UploadDecorationRole)
+
     def filterAcceptsRow(self, row=0, parent=QtCore.QModelIndex()):
         model = self.sourceModel()
         index = model.index(row, 0, parent=parent)
@@ -399,4 +425,4 @@ class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
 
         node = model.data(index, TreeModel.NodeRole)
 
-        return node.get("status") > 0
+        return node.get("status", 0) > 0
