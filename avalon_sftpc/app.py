@@ -4,10 +4,8 @@ from avalon.vendor.Qt import QtWidgets, QtCore
 from avalon import tools, style
 from .widgets import JobWidget
 
-
 module = sys.modules[__name__]
 module.window = None
-module.demo = False
 
 
 class Window(QtWidgets.QDialog):
@@ -75,6 +73,7 @@ def show(debug=False, demo=False, parent=None):
         parent (QtCore.QObject, optional): The Qt object to parent to.
 
     """
+    global _DEMO
 
     # Remember window
     if module.window is not None:
@@ -102,8 +101,15 @@ def show(debug=False, demo=False, parent=None):
         import traceback
         sys.excepthook = lambda typ, val, tb: traceback.print_last()
 
+    # Assign workers
     if demo:
-        module.demo = demo
+        from . import model, mock
+        model._Uploader = mock.MockUploader
+        model._PackageProducer = mock.MockPackageProducer
+    else:
+        from . import model, worker
+        model._Uploader = worker.Uploader
+        model._PackageProducer = worker.PackageProducer
 
     with tools.lib.application():
         window = Window(parent)

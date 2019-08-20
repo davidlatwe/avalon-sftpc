@@ -8,7 +8,24 @@ from avalon.vendor import qtawesome
 from avalon.vendor.Qt import QtCore
 from avalon.tools.projectmanager.model import TreeModel, Node
 
-from .worker import producer, uploader
+_Uploader = None
+_PackageProducer = None
+# ^^^
+# For the scenario like generating job package in Maya, which in an environment
+# that may not have the dependency module `pysftp` installed, but requires and
+# only needs to access `.util`, we need to delay import stuff from `work.py` so
+# the `ImportError` can be avoided.
+#
+# Above two attributes were get assigned when `app.show` is called, and depends
+# on *demo* enabled or not, use different classes:
+#
+# if demo:
+#     _Uploader = mock.MockUploader
+#     _PackageProducer = mock.MockPackageProducer
+# else:
+#     _Uploader = worker.Uploader
+#     _PackageProducer = worker.PackageProducer
+#
 
 
 class JobItem(object):
@@ -137,13 +154,10 @@ class JobSourceModel(TreeModel):  # QueueModel ?
     def __init__(self, parent=None):
         super(JobSourceModel, self).__init__(parent=parent)
 
-        _Uploader = uploader()
-        _Producer = producer()
-
         self.jobsref = WeakValueDictionary()
         self.pendings = Queue()
         self.progress = Queue()
-        self.producer = _Producer()
+        self.producer = _PackageProducer()
         self.consumers = [_Uploader(self.pendings, self.progress, id)
                           for id in range(self.MAX_CONNECTIONS)]
         self.consume()
