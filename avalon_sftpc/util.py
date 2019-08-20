@@ -180,11 +180,17 @@ class JobExporter(object):
         version = context["version"]
 
         # Use loader to get local representation path
-        loaders = (l for l in self.available_loaders
-                   if pipeline.is_compatible_loader(l, context))
-        Loader = next(loaders)
-        loader = Loader(context)
-        repr_path = loader.fname
+        for Loader in self.available_loaders:
+            if not pipeline.is_compatible_loader(Loader, context):
+                continue
+
+            loader = Loader(context)
+            if hasattr(loader, "fname"):
+                repr_path = loader.fname
+                break
+        else:
+            raise Exception("Counld not find Loader for '%s'"
+                            "" % representation["name"])
 
         # Compute remote representation path
         template = project["config"]["template"]["publish"]
