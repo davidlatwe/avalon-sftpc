@@ -38,6 +38,7 @@ def get_site(site_name):
 
     return {
         "host": get("host"),
+        "port": int(get("port") or 22),
         "username": get("username"),
         "password": get("password"),
         "hostkey": b"".join(get("hostkey").encode().split()),
@@ -57,7 +58,7 @@ class Uploader(Process):
         self.jobs.put(_STOP)
 
     @contextlib.contextmanager
-    def _connection(self, host, username, password, hostkey):
+    def _connection(self, host, port, username, password, hostkey):
         cnopts = None
         if hostkey:
             sshkey = paramiko.RSAKey(data=decodebytes(hostkey))
@@ -65,6 +66,7 @@ class Uploader(Process):
             cnopts.hostkeys.add(host, "ssh-rsa", sshkey)
 
         conn = pysftp.Connection(host,
+                                 port=port,
                                  username=username,
                                  password=password,
                                  cnopts=cnopts)
