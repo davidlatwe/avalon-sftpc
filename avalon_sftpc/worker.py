@@ -54,15 +54,15 @@ def get_site(site_name):
 
 class Uploader(Process):
 
-    def __init__(self, jobs, update, process_id):
+    def __init__(self, pipe_in, pipe_out, process_id):
         super(Uploader, self).__init__()
-        self.jobs = jobs
-        self.update = update
+        self.pipe_in = pipe_in
+        self.pipe_out = pipe_out
         self._id = process_id
         self.consuming = False
 
     def stop(self):
-        self.jobs.put(_STOP)
+        self.pipe_in.put(_STOP)
 
     @contextlib.contextmanager
     def _connection(self, host, port, username, password, hostkey):
@@ -95,7 +95,7 @@ class Uploader(Process):
     # Let the jobs able to keep coming
     def run(self):
         while True:
-            job = self.jobs.get()
+            job = self.pipe_in.get()
 
             if job == _STOP:
                 break
@@ -105,7 +105,7 @@ class Uploader(Process):
             def callback(transferred, to_be_transferred):
                 """Update progress"""
                 status = transferred == to_be_transferred
-                self.update.put((job._id, transferred, status, self._id))
+                self.pipe_out.put((job._id, transferred, status, self._id))
 
             with self._connection(**get_site(job.site)) as conn:
                 if conn is None:
@@ -127,7 +127,7 @@ class Uploader(Process):
                 except Exception:
                     # When error happens, return file size as all transferred,
                     # so the progress and status can be visualized properly.
-                    self.update.put((job._id, fsize, -1, self._id))
+                    self.pipe_out.put((job._id, fsize, -1, self._id))
 
 
 class PackageProducer(object):

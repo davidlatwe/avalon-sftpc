@@ -155,10 +155,11 @@ class JobSourceModel(TreeModel):  # QueueModel ?
         super(JobSourceModel, self).__init__(parent=parent)
 
         self.jobsref = WeakValueDictionary()
-        self.pendings = Queue()
-        self.progress = Queue()
+        self.pipe_in = Queue()
+        self.pipe_out = Queue()
+
         self.producer = _PackageProducer()
-        self.consumers = [_Uploader(self.pendings, self.progress, id)
+        self.consumers = [_Uploader(self.pipe_in, self.pipe_out, id)
                           for id in range(self.MAX_CONNECTIONS)]
         self.consume()
 
@@ -224,7 +225,7 @@ class JobSourceModel(TreeModel):  # QueueModel ?
 
     def pending(self, package):
         for job in package.jobs:
-            self.pendings.put(job)
+            self.pipe_in.put(job)
             self.jobsref[job._id] = job
 
     def consume(self):
@@ -233,7 +234,7 @@ class JobSourceModel(TreeModel):  # QueueModel ?
 
         def update():
             while True:
-                id, progress, status, process_id = self.progress.get()
+                id, progress, status, process_id = self.pipe_out.get()
                 job = self.jobsref[id]
                 job.transferred = progress
                 job.status = status

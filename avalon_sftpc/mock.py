@@ -15,20 +15,20 @@ class MockUploader(Process):
     mock_upload_speed = 100
     mock_error_rate = 1  # 0.9999999
 
-    def __init__(self, jobs, update, process_id):
+    def __init__(self, pipe_in, pipe_out, process_id):
         super(MockUploader, self).__init__()
-        self.jobs = jobs
-        self.update = update
+        self.pipe_in = pipe_in
+        self.pipe_out = pipe_out
         self._id = process_id
         self.consuming = False
 
     def stop(self):
-        self.jobs.put(_STOP)
+        self.pipe_in.put(_STOP)
 
     def run(self):
 
         while True:
-            job = self.jobs.get()
+            job = self.pipe_in.get()
 
             if job == _STOP:
                 break
@@ -44,7 +44,7 @@ class MockUploader(Process):
             try:
                 for chunk in chunks:
                     job.transferred += chunk
-                    self.update.put((job._id, job.transferred, 0, self._id))
+                    self.pipe_out.put((job._id, job.transferred, 0, self._id))
 
                     # Simulate error
                     dice = random.random()
@@ -52,9 +52,9 @@ class MockUploader(Process):
                         raise IOError("This is not what I want.")
 
             except Exception:
-                self.update.put((job._id, fsize, -1, self._id))
+                self.pipe_out.put((job._id, fsize, -1, self._id))
             else:
-                self.update.put((job._id, job.transferred, 1, self._id))
+                self.pipe_out.put((job._id, job.transferred, 1, self._id))
 
 
 class MockPackageProducer(PackageProducer):
