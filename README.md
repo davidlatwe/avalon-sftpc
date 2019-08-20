@@ -2,6 +2,7 @@
 Avalon SFTP Client, for uploading Avalon workfile or representation to remote site via SFTP
 
 ### Requires
+* `avalon-core`
 * `pysftp`
 
 ### Demo
