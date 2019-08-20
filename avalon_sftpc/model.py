@@ -230,6 +230,28 @@ class JobSourceModel(TreeModel):  # QueueModel ?
             self.pipe_in.put(job)
             self.jobsref[job._id] = job
 
+    def requeue_failed(self, package):
+        for job in package.jobs:
+            if job.result in (0, 1):
+                # (TODO) Maybe add another list attribute to hold failed
+                #        job in package ?
+                continue
+            # Reset
+            job.transferred = 0
+            job.result = 0
+            # Requeue
+            self.pipe_in.put(job)
+            self.jobsref[job._id] = job
+
+    def requeue_all(self, package):
+        for job in package.jobs:
+            # Reset
+            job.transferred = 0
+            job.result = 0
+            # Requeue
+            self.pipe_in.put(job)
+            self.jobsref[job._id] = job
+
     def consume(self):
         for c in self.consumers:
             c.start()

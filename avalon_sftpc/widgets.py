@@ -158,8 +158,8 @@ class JobWidget(QtWidgets.QWidget):
 
         # (TODO)
         # [x] Show error log
-        # [ ] Re-upload failed files
-        # [ ] Re-upload all files
+        # [X] Re-upload failed files
+        # [X] Re-upload all files
         # [ ] Back to stage
 
         menu = QtWidgets.QMenu(self)
@@ -167,7 +167,15 @@ class JobWidget(QtWidgets.QWidget):
         show_error_action = QtWidgets.QAction("Show Errors", menu)
         show_error_action.triggered.connect(self.act_show_error)
 
+        requeue_failed_action = QtWidgets.QAction("Re-upload Failed Job", menu)
+        requeue_failed_action.triggered.connect(self.act_requeue_failed)
+
+        requeue_all_action = QtWidgets.QAction("Re-upload Full Package", menu)
+        requeue_all_action.triggered.connect(self.act_requeue_all)
+
         menu.addAction(show_error_action)
+        menu.addAction(requeue_failed_action)
+        menu.addAction(requeue_all_action)
 
         # Show the context action menu
         global_point = self.upload_view.mapToGlobal(point)
@@ -258,7 +266,7 @@ class JobWidget(QtWidgets.QWidget):
         """
         self.model.clear_stage()
 
-    def act_show_error(self):
+    def _errored_packages_from_selection(self):
         model = self.model
         proxy = self.upload_proxy
         selection_model = self.upload_view.selectionModel()
@@ -272,6 +280,20 @@ class JobWidget(QtWidgets.QWidget):
             if errored is not None:
                 errored_packages.append(errored)
 
+        return errored_packages
+
+    def act_requeue_failed(self):
+        errored_packages = self._errored_packages_from_selection()
+        for package in errored_packages:
+            self.model.requeue_failed(package)
+
+    def act_requeue_all(self):
+        errored_packages = self._errored_packages_from_selection()
+        for package in errored_packages:
+            self.model.requeue_all(package)
+
+    def act_show_error(self):
+        errored_packages = self._errored_packages_from_selection()
         error_dialog = ErrorDialog(errored_packages, self.parent())
         error_dialog.show()
 
