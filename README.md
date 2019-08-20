@@ -10,3 +10,22 @@ Avalon SFTP Client, for uploading Avalon workfile or representation to remote si
 
 Still needs to be improved.
 Stay tuned. :)
+
+### Environment vars
+`AVALON_SFTPC_SITES`: Folder which contains SFTP sites' config files
+`AVALON_SFTPC_SITE`: SFTP site config name
+
+### Get SSH key
+`$ ssh-keyscan host`
+
+### Generating job package file
+```python
+# Inside Maya (or other DCC App that has Avalon implementation)
+from avalon_sftpc import util
+
+exporter = util.JobExporter(remote_root="", remote_user="user")
+exporter.from_workfile(additional_jobs)
+out = exporter.export()
+print(out)
+
+```
