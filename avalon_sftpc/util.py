@@ -14,7 +14,7 @@ def get_site(site_name):
     """
     """
     default_sites = os.path.dirname(__file__) + "/sites"
-    sites = os.getenv("AVALON_SFTP_SITES", default_sites)
+    sites = os.getenv("AVALON_SFTPC_SITES", default_sites)
 
     site_cfg = sites + "/%s.cfg" % site_name
     if not os.path.isfile(site_cfg):
@@ -139,7 +139,7 @@ class JobExporter(object):
 
         """
         project = api.Session["AVALON_PROJECT"]
-        site = api.Session["AVALON_SFTP"]
+        site = api.Session["AVALON_SFTPC_SITE"]
 
         job = {
             "project": project,
