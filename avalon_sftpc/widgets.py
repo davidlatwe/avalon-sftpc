@@ -156,7 +156,24 @@ class JobWidget(QtWidgets.QWidget):
         if not point_index.isValid():
             return
 
-        print("UPLOAD MENU")
+        # (TODO)
+        # [x] Show error log
+        # [ ] Re-upload failed files
+        # [ ] Re-upload all files
+        # [ ] Back to stage
+
+        menu = QtWidgets.QMenu(self)
+
+        show_error_action = QtWidgets.QAction("Show Errors", menu)
+        show_error_action.triggered.connect(self.act_show_error)
+
+        menu.addAction(show_error_action)
+
+        # Show the context action menu
+        global_point = self.upload_view.mapToGlobal(point)
+        action = menu.exec_(global_point)
+        if not action:
+            return
 
     def on_quit(self):
         self.model.stop()
@@ -240,3 +257,65 @@ class JobWidget(QtWidgets.QWidget):
         Stage Menu Action
         """
         self.model.clear_stage()
+
+    def act_show_error(self):
+        model = self.model
+        proxy = self.upload_proxy
+        selection_model = self.upload_view.selectionModel()
+
+        rows = selection_model.selectedRows(column=0)
+        source_indices = [proxy.mapToSource(r) for r in rows]
+
+        errored_packages = list()
+        for index in source_indices:
+            errored = model.data(index, model.UploadErrorRole)
+            if errored is not None:
+                errored_packages.append(errored)
+
+        error_dialog = ErrorDialog(errored_packages, self.parent())
+        error_dialog.show()
+
+
+class ErrorDialog(QtWidgets.QDialog):
+
+    def __init__(self, errored_packages, parent=None):
+        QtWidgets.QDialog.__init__(self, parent)
+
+        self.setModal(True)  # Force and keep focus dialog
+
+        text = QtWidgets.QTextEdit()
+
+        body = QtWidgets.QVBoxLayout(self)
+        body.addWidget(text)
+
+        self.text = text
+
+        self.make_log(errored_packages)
+
+    def make_log(self, errored_packages):
+        package_header = ("Project: {project}\n"
+                          "Site: {site}\n"
+                          "Description: {desc}\n"
+                          "Jobs:\n"
+                          "--------------\n")
+        job_template = ("From: {src}\n"
+                        "To: {dst}\n"
+                        "Error: {err}\n"
+                        ". . . . . . .\n")
+
+        errorlog = ""
+        for package in errored_packages:
+            errorlog += package_header.format(project=package["project"],
+                                              site=package["site"],
+                                              desc=package["description"])
+            for job in package.jobs:
+                if job.result in (0, 1):
+                    continue
+
+                src, dst, fsize = job.content
+                errorlog += job_template.format(src=src,
+                                                dst=dst,
+                                                err=str(job.result))
+            errorlog += "\n"
+
+        self.text.setText(errorlog)

@@ -133,6 +133,7 @@ class JobSourceModel(TreeModel):  # QueueModel ?
     UploadDisplayRole = QtCore.Qt.UserRole + 20
     UploadSortRole = QtCore.Qt.UserRole + 21
     UploadDecorationRole = QtCore.Qt.UserRole + 22
+    UploadErrorRole = QtCore.Qt.UserRole + 23
 
     STATUS = [
         "staging",
@@ -297,6 +298,13 @@ class JobSourceModel(TreeModel):  # QueueModel ?
                 node = index.internalPointer()
                 status = node.get("status", 0)
                 return self.status_icon[status]
+
+        if role == self.UploadErrorRole:
+            node = index.internalPointer()
+            if any(job.result not in (0, 1) for job in node.jobs):
+                return node  # Only return package that has failed job
+            else:
+                return None
 
         return super(JobSourceModel, self).data(index, role)
 
