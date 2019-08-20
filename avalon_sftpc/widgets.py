@@ -1,6 +1,8 @@
 
 import os
 from avalon.vendor.Qt import QtWidgets, QtCore
+
+from . import app
 from .model import JobSourceModel, JobStagingProxyModel, JobUploadProxyModel
 from .delegates import ProgressDelegate
 
@@ -164,13 +166,15 @@ class JobWidget(QtWidgets.QWidget):
     def stage(self):
         job_file = self.line_input.text()
 
-        if not job_file:
-            self.echo.emit("Empty file path.")
-            return
+        if not app.demo:
 
-        if not os.path.isfile(job_file):
-            self.echo.emit("File does not exist.")
-            return
+            if not job_file:
+                self.echo.emit("Empty file path.")
+                return
+
+            if not os.path.isfile(job_file):
+                self.echo.emit("File does not exist.")
+                return
 
         # (TODO) Need to catch error inside the package producer
         #        thread, maybe a global error pipe ?

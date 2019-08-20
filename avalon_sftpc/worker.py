@@ -6,6 +6,11 @@ import threading
 import json
 import pysftp
 import paramiko
+
+import random  # For mocking
+import tempfile
+import shutil
+
 from paramiko.py3compat import decodebytes
 from multiprocessing import Process
 
@@ -21,6 +26,13 @@ def uploader():
         return MockUploader
     else:
         return Uploader
+
+
+def producer():
+    if app.demo:
+        return MockPackageProducer
+    else:
+        return PackageProducer
 
 
 class Uploader(Process):
@@ -113,10 +125,7 @@ class PackageProducer(object):
         producer.start()
 
     def _digest(self, resource):
-        with open(resource, "r") as file:
-            packages = json.load(file)
-
-        assert isinstance(packages, list)
+        packages = self._parse(resource)
 
         for data in packages:
             # A list of (local, remote) file path tuple
@@ -156,11 +165,17 @@ class PackageProducer(object):
 
             yield package
 
+        def _parse(self, json_file):
+            with open(json_file, "r") as file:
+                packages = json.load(file)
+            assert isinstance(packages, list)
+            return packages
+
 
 class MockUploader(Process):
 
-    mock_upload_speed = 10000
-    mock_error_rate = 0.99
+    mock_upload_speed = 100
+    mock_error_rate = 1  # 0.9999999
 
     def __init__(self, jobs, update, process_id):
         super(MockUploader, self).__init__()
@@ -173,7 +188,6 @@ class MockUploader(Process):
         self.jobs.put(_STOP)
 
     def run(self):
-        import random  # For mocking error
 
         while True:
             job = self.jobs.get()
@@ -181,16 +195,12 @@ class MockUploader(Process):
             if job == _STOP:
                 break
 
-            src, dst = job.content
-
-            # `JobItem` does not know the file size, since
-            # we do not need that info in real uploader.
-            to_be_transferred = os.path.getsize(src)
+            src, dst, fsize = job.content
 
             # Compute
             chunk_size = self.mock_upload_speed
-            steps = int(to_be_transferred / chunk_size)
-            remain = to_be_transferred % chunk_size
+            steps = int(fsize / chunk_size)
+            remain = fsize % chunk_size
             chunks = [chunk_size] * steps + [remain]
 
             try:
@@ -199,14 +209,109 @@ class MockUploader(Process):
                     self.update.put((job._id, job.transferred, 0, self._id))
 
                     # Simulate error
-                    if random.random() > self.mock_error_rate:
+                    dice = random.random()
+                    if dice > self.mock_error_rate:
                         raise IOError("This is not what I want.")
 
             except Exception:
-                self.update.put((job._id, job.transferred, -1, self._id))
+                self.update.put((job._id, fsize, -1, self._id))
             else:
                 self.update.put((job._id, job.transferred, 1, self._id))
 
 
-class MockPackageProducer(object):
-    pass
+class MockPackageProducer(PackageProducer):
+
+    def _parse(self, json_file):
+        return self.make_dummies()
+
+    BIG = 1024**2 * 10
+    MID = 1024**2 * 3
+    SML = 1024**2
+
+    dummies = {
+        "/some": {
+            "fname": "work_%d.dum",
+            "size": BIG,
+            "variant": 5000,
+            "count": 1,
+        },
+        "/fooA": {
+            "fname": "bar_%04d.dum",
+            "size": MID,
+            "variant": 1000,
+            "count": 12,
+        },
+        "/fooB": {
+            "fname": "bar_%04d.dum",
+            "size": MID,
+            "variant": 1000,
+            "count": 18,
+        },
+        "/cacheA": {
+            "fname": "many_%d.dum",
+            "size": SML,
+            "variant": 500,
+            "count": 75,
+        },
+        "/cacheB": {
+            "fname": "many_%d.dum",
+            "size": SML,
+            "variant": 500,
+            "count": 123,
+        },
+    }
+
+    def make_dummies(self):
+
+        rootdir = tempfile.mkdtemp()
+        print("Generating dummies to '%s'.." % rootdir)
+
+        def fgenerator(fname, size, variant, count):
+            for i in range(count):
+
+                file = fname % i
+                if os.path.isfile(file):
+                    yield file
+                    continue
+
+                fsize = size + random.randint(0, variant)
+
+                with open(file, "wb") as fp:
+                    batch = int(fsize / 80)
+                    remain = fsize % 80
+                    line = b"0" * 79 + b"\n"
+                    for x in range(batch):
+                        fp.write(line)
+                    if remain:
+                        fp.write(b"0" * (remain - 1) + b"\n")
+
+                yield file
+
+        origin = os.getcwd()
+        for dirname, args in self.dummies.items():
+            dirpath = rootdir + dirname
+
+            os.makedirs(dirpath, exist_ok=True)
+            os.chdir(dirpath)
+
+            files = list()
+            for file in fgenerator(**args):
+                fpath = dirpath + "/" + file
+
+                files.append((fpath, "mock-dst"))
+
+            os.chdir(origin)
+
+            job = {
+                "project": "Mock",
+                "site": "demo",
+                "type": "dummy",
+                "description": "Some dummies for demo",
+                "files": files,
+            }
+
+            yield job
+
+        # File size has been collected, we can now delete all those dummies.
+        print("Removing dummies from '%s'.." % rootdir)
+        shutil.rmtree(rootdir, ignore_errors=True)

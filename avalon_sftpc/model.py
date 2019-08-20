@@ -8,7 +8,7 @@ from avalon.vendor import qtawesome
 from avalon.vendor.Qt import QtCore
 from avalon.tools.projectmanager.model import TreeModel, Node
 
-from .worker import PackageProducer, uploader
+from .worker import producer, uploader
 
 
 class JobItem(object):
@@ -138,11 +138,12 @@ class JobSourceModel(TreeModel):  # QueueModel ?
         super(JobSourceModel, self).__init__(parent=parent)
 
         _Uploader = uploader()
+        _Producer = producer()
 
         self.jobsref = WeakValueDictionary()
         self.pendings = Queue()
         self.progress = Queue()
-        self.producer = PackageProducer()
+        self.producer = _Producer()
         self.consumers = [_Uploader(self.pendings, self.progress, id)
                           for id in range(self.MAX_CONNECTIONS)]
         self.consume()
