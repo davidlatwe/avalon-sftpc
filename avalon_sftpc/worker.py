@@ -85,7 +85,9 @@ class Uploader(Process):
                 ConnectionException,
                 CredentialException,
                 HostKeysException):
-            pass
+            # Mock a connection object for exit
+            conn = type("MockConn", (object,), {"close": lambda: None})
+            yield None
 
         finally:
             conn.close()
@@ -106,11 +108,17 @@ class Uploader(Process):
                 self.update.put((job._id, transferred, status, self._id))
 
             with self._connection(**get_site(job.site)) as conn:
+                if conn is None:
+                    # Connection error occurred
+                    continue
+
                 remote_dir = os.path.dirname(dst)
+
                 try:
                     conn.makedirs(remote_dir)
                 except IOError:
                     pass
+
                 try:
                     conn.put(src,
                              dst,
