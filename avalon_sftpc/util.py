@@ -127,6 +127,8 @@ class JobExporter(object):
         with open(out, "w") as file:
             json.dump(self.jobs, file, indent=4)
 
+        return out
+
     def add_job(self, files, type, description):
         """
 
