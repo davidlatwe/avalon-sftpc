@@ -51,8 +51,8 @@ class MockUploader(Process):
                     if dice > self.mock_error_rate:
                         raise IOError("This is not what I want.")
 
-            except Exception:
-                self.pipe_out.put((job._id, fsize, -1, self._id))
+            except Exception as error:
+                self.pipe_out.put((job._id, fsize, error, self._id))
             else:
                 self.pipe_out.put((job._id, job.transferred, 1, self._id))
 

@@ -15,13 +15,6 @@ except ImportError:
 import pysftp
 import paramiko
 
-from paramiko.ssh_exception import SSHException
-from pysftp.exceptions import (
-    ConnectionException,
-    CredentialException,
-    HostKeysException,
-)
-
 
 _STOP = "STOP"
 
@@ -81,13 +74,10 @@ class Uploader(Process):
                                      cnopts=cnopts)
             yield conn
 
-        except (SSHException,
-                ConnectionException,
-                CredentialException,
-                HostKeysException):
+        except Exception as error:
             # Mock a connection object for exit
             conn = type("MockConn", (object,), {"close": lambda: None})
-            yield None
+            yield error
 
         finally:
             conn.close()
@@ -108,15 +98,18 @@ class Uploader(Process):
                 self.pipe_out.put((job._id, transferred, status, self._id))
 
             with self._connection(**get_site(job.site)) as conn:
-                if conn is None:
+                if not isinstance(conn, pysftp.Connection):
                     # Connection error occurred
+                    error = conn
+                    self.pipe_out.put((job._id, fsize, error, self._id))
                     continue
 
                 remote_dir = os.path.dirname(dst)
 
                 try:
                     conn.makedirs(remote_dir)
-                except IOError:
+                except Exception:
+                    # Should be safe to ignore this error
                     pass
 
                 try:
@@ -124,10 +117,10 @@ class Uploader(Process):
                              dst,
                              preserve_mtime=True,
                              callback=callback)
-                except Exception:
+                except Exception as error:
                     # When error happens, return file size as all transferred,
                     # so the progress and status can be visualized properly.
-                    self.pipe_out.put((job._id, fsize, -1, self._id))
+                    self.pipe_out.put((job._id, fsize, error, self._id))
 
 
 class PackageProducer(object):

@@ -72,10 +72,11 @@ class PackageItem(Node):
         for job in self.jobs:
             transferred += job.transferred
 
-            if job.status == 1:
+            if job.status == 0:
+                pass  # Still pending
+            elif job.status == 1:
                 uploaded += 1
-
-            if job.status == -1:
+            else:
                 errored = True
 
         if transferred > 0:
@@ -239,10 +240,12 @@ class JobSourceModel(TreeModel):  # QueueModel ?
                 job.transferred = progress
                 job.status = status
 
-                if status == 1:
-                    self.consumers[process_id].consuming = False
-                else:
+                if status == 0:
+                    # Still uploading
                     self.consumers[process_id].consuming = True
+                else:
+                    # Upload completed or error occurred
+                    self.consumers[process_id].consuming = False
 
         updator = threading.Thread(target=update, daemon=True)
         updator.start()
