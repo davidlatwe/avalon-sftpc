@@ -4,16 +4,23 @@ import contextlib
 import hashlib
 import threading
 import json
-import pysftp
-import paramiko
-
-from paramiko.py3compat import decodebytes
 from multiprocessing import Process
 
 try:
     from configparser import ConfigParser
 except ImportError:
     from ConfigParser import ConfigParser
+
+# dependencies
+import pysftp
+import paramiko
+
+from paramiko.ssh_exception import SSHException
+from pysftp.exceptions import (
+    ConnectionException,
+    CredentialException,
+    HostKeysException,
+)
 
 
 _STOP = "STOP"
@@ -61,17 +68,25 @@ class Uploader(Process):
     def _connection(self, host, port, username, password, hostkey):
         cnopts = None
         if hostkey:
-            sshkey = paramiko.RSAKey(data=decodebytes(hostkey))
+            hostkey = paramiko.py3compat.decodebytes(hostkey)
+            sshkey = paramiko.RSAKey(data=hostkey)
             cnopts = pysftp.CnOpts()
             cnopts.hostkeys.add(host, "ssh-rsa", sshkey)
 
-        conn = pysftp.Connection(host,
-                                 port=port,
-                                 username=username,
-                                 password=password,
-                                 cnopts=cnopts)
         try:
+            conn = pysftp.Connection(host,
+                                     port=port,
+                                     username=username,
+                                     password=password,
+                                     cnopts=cnopts)
             yield conn
+
+        except (SSHException,
+                ConnectionException,
+                CredentialException,
+                HostKeysException):
+            pass
+
         finally:
             conn.close()
 
