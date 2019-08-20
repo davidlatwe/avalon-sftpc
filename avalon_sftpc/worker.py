@@ -60,7 +60,7 @@ class Uploader(Process):
             if job == _STOP:
                 break
 
-            src, dst = job.content
+            src, dst, fsize = job.content
 
             def callback(transferred, to_be_transferred):
                 """Update progress"""
@@ -79,7 +79,9 @@ class Uploader(Process):
                              preserve_mtime=True,
                              callback=callback)
                 except Exception:
-                    self.update.put((job._id, job.transferred, -1, self._id))
+                    # When error happens, return file size as all transferred,
+                    # so the progress and status can be visualized properly.
+                    self.update.put((job._id, fsize, -1, self._id))
 
 
 class PackageProducer(object):
@@ -121,6 +123,7 @@ class PackageProducer(object):
             # Ensure unique and sort for hashing
             files = sorted(set([(src, dst) for src, dst in data["files"]]))
 
+            contents = list()
             total_size = 0
             hash_obj = hashlib.sha512()  # For preventing duplicate package
 
@@ -129,7 +132,10 @@ class PackageProducer(object):
                 hash_obj.update(dst.encode())
 
                 # Summing file size
-                total_size += os.path.getsize(src)
+                fsize = os.path.getsize(src)
+                total_size += fsize
+
+                contents.append((src, dst, fsize))
 
             if total_size == 0:
                 raise Exception("Package size is 0, this should not happen.")
@@ -139,7 +145,7 @@ class PackageProducer(object):
                 "type": data["type"],
                 "description": data["description"],
                 "site": data["site"],
-                "files": files,
+                "files": contents,
                 "status": 0,
                 "count": len(files),
                 "size": round(total_size / float(1024**2), 2),  # (MB)
