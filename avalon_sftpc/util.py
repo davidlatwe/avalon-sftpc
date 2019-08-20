@@ -4,36 +4,6 @@ import getpass
 import json
 from avalon import io, api, pipeline
 
-try:
-    from configparser import ConfigParser
-except ImportError:
-    from ConfigParser import ConfigParser
-
-
-def get_site(site_name):
-    """
-    """
-    default_sites = os.path.dirname(__file__) + "/sites"
-    sites = os.getenv("AVALON_SFTPC_SITES", default_sites)
-
-    site_cfg = sites + "/%s.cfg" % site_name
-    if not os.path.isfile(site_cfg):
-        # (TODO) This will crash app. Maybe an warning ?
-        raise Exception("Site '%s' configuration file not found: %s"
-                        "" % (site_name, site_cfg))
-
-    # Read settings from a configuration file
-    parser = ConfigParser()
-    parser.read(site_cfg)
-    get = (lambda key: parser.get("avalon-sftp", key, fallback=""))
-
-    return {
-        "host": get("host"),
-        "username": get("username"),
-        "password": get("password"),
-        "hostkey": b"".join(get("hostkey").encode().split()),
-    }
-
 
 _DOC_CACHE = dict()
 
