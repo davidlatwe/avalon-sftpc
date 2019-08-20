@@ -94,8 +94,8 @@ class Uploader(Process):
 
             def callback(transferred, to_be_transferred):
                 """Update progress"""
-                status = transferred == to_be_transferred
-                self.pipe_out.put((job._id, transferred, status, self._id))
+                result = transferred == to_be_transferred
+                self.pipe_out.put((job._id, transferred, result, self._id))
 
             with self._connection(**get_site(job.site)) as conn:
                 if not isinstance(conn, pysftp.Connection):

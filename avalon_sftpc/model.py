@@ -32,7 +32,7 @@ class JobItem(object):
     """
     """
 
-    __slots__ = ("_id", "site", "content", "transferred", "status",
+    __slots__ = ("_id", "site", "content", "transferred", "result",
                  "__weakref__")
 
     def __init__(self, job_id, site, content):
@@ -40,7 +40,7 @@ class JobItem(object):
         self.site = site
         self.content = content
         self.transferred = 0
-        self.status = 0
+        self.result = 0
 
 
 class PackageItem(Node):
@@ -72,9 +72,9 @@ class PackageItem(Node):
         for job in self.jobs:
             transferred += job.transferred
 
-            if job.status == 0:
+            if job.result == 0:
                 pass  # Still pending
-            elif job.status == 1:
+            elif job.result == 1:
                 uploaded += 1
             else:
                 errored = True
@@ -235,12 +235,12 @@ class JobSourceModel(TreeModel):  # QueueModel ?
 
         def update():
             while True:
-                id, progress, status, process_id = self.pipe_out.get()
+                id, progress, result, process_id = self.pipe_out.get()
                 job = self.jobsref[id]
                 job.transferred = progress
-                job.status = status
+                job.result = result
 
-                if status == 0:
+                if result == 0:
                     # Still uploading
                     self.consumers[process_id].consuming = True
                 else:
