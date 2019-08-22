@@ -73,8 +73,6 @@ def show(debug=False, demo=False, parent=None):
         parent (QtCore.QObject, optional): The Qt object to parent to.
 
     """
-    global _DEMO
-
     # Remember window
     if module.window is not None:
         try:
