@@ -77,16 +77,14 @@ class LogLevelIcon(QtWidgets.QWidget):
     def __init__(self, parent=None):
         super(LogLevelIcon, self).__init__(parent)
 
-        font_awesome = "fa.{}".format("bell")
-
         self.level = logging.NOTSET
         self.icons = {
-            logging.NOTSET: qtawesome.icon(font_awesome, color="#404040"),
-            logging.DEBUG: qtawesome.icon(font_awesome, color="#5AD594"),
-            logging.INFO: qtawesome.icon(font_awesome, color="#439BF2"),
-            logging.WARNING: qtawesome.icon(font_awesome, color="#EED14E"),
-            logging.ERROR: qtawesome.icon(font_awesome, color="#F53434"),
-            logging.CRITICAL: qtawesome.icon(font_awesome, color="#F34FC1"),
+            logging.NOTSET: qtawesome.icon("fa.bell", color="#404040"),
+            logging.DEBUG: qtawesome.icon("fa.bell", color="#5AD594"),
+            logging.INFO: qtawesome.icon("fa.bell", color="#439BF2"),
+            logging.WARNING: qtawesome.icon("fa.bell", color="#EED14E"),
+            logging.ERROR: qtawesome.icon("fa.bell", color="#F53434"),
+            logging.CRITICAL: qtawesome.icon("fa.bell", color="#F34FC1"),
         }
 
         self.setMinimumSize(18, 18)
