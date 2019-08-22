@@ -18,15 +18,21 @@ $ python -m avalon_sftpc --demo
 
 ### Usage
 
-1. Generating job package file
+**NOTE: Uploading with 10 processes, not tweakable**
+
+1. Write SFTP server connection config file
+
+See [here](avalon_sftpc/sites/README.md)
+
+2. Generating job package file
 
 ```python
 # Inside Maya (or other DCC App that has Avalon implementation)
 from avalon_sftpc import util
 
 exporter = util.JobExporter(remote_root="",
-                            remote_user="demo-user",
-                            site="demo")
+                            remote_user="user",
+                            site="site-name")
 
 
 def collect_rogue_files():
@@ -58,7 +64,7 @@ print(out)
 
 ```
 
-2. Launch Avalon Uploader
+3. Launch Avalon Uploader
 
 ```
 $ python -m avalon_sftpc
