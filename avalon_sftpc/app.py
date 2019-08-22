@@ -1,5 +1,6 @@
 
 import sys
+import argparse
 import logging
 from avalon.vendor.Qt import QtWidgets, QtCore, QtGui
 from avalon.vendor import qtawesome
@@ -222,5 +223,11 @@ def show(debug=False, demo=False, parent=None):
         module.window = window
 
 
-def cli(*args):
-    show()
+def cli(args):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--demo", action="store_true")
+
+    args = parser.parse_args(args)
+    demo = args.demo
+
+    show(demo=demo)
