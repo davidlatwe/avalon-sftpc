@@ -92,8 +92,7 @@ class JobExporter(object):
         if out is None:
             host = api.registered_host()
             workfile = host.current_file()
-
-            out = os.path.splitext(workfile)[0] + ".sftp.job"
+            out = workfile + ".sftp.job"
 
         with open(out, "w") as file:
             json.dump(self.jobs, file, indent=4)
