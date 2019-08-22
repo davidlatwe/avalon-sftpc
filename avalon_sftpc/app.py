@@ -24,7 +24,8 @@ class Window(QtWidgets.QDialog):
     def __init__(self, parent=None):
         super(Window, self).__init__(parent)
 
-        self.setWindowTitle("Avalon SFTP Uploader")
+        self.setWindowIcon(qtawesome.icon("fa.paper-plane", color="#52D77B"))
+        self.setWindowTitle("Avalon Uploader (SFTP)")
 
         body = QtWidgets.QWidget()
 

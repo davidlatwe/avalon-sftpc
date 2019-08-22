@@ -1,5 +1,6 @@
 
 import logging
+from avalon.vendor import qtawesome
 from avalon.vendor.Qt import QtWidgets, QtCore
 
 from .model import JobSourceModel, JobStagingProxyModel, JobUploadProxyModel
@@ -102,7 +103,9 @@ class JobWidget(QtWidgets.QWidget):
         staging_layout = QtWidgets.QVBoxLayout(staging_body)
 
         line_input = QtWidgets.QLineEdit()
-        send_btn = QtWidgets.QPushButton("Send")
+        line_input.setPlaceholderText("Put packages file path here..")
+        send_btn = QtWidgets.QPushButton()
+        send_btn.setIcon(qtawesome.icon("fa.upload", color="#CBCBCB"))
 
         input_layout = QtWidgets.QHBoxLayout()
         input_layout.addWidget(line_input)
