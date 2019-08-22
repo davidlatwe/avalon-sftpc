@@ -74,7 +74,7 @@ class JobExporter(object):
         ".swatch",
     ]
 
-    def __init__(self, remote_root, remote_user):
+    def __init__(self, remote_root, remote_user, site):
         """
         Args:
             remote_root (str): Projects root at remote site
@@ -84,6 +84,7 @@ class JobExporter(object):
         self.jobs = list()
         self.remote_root = remote_root
         self.remote_user = remote_user
+        self.site = site
 
         self.available_loaders = api.discover(api.Loader)
 
@@ -108,12 +109,9 @@ class JobExporter(object):
             description (str)
 
         """
-        project = api.Session["AVALON_PROJECT"]
-        site = api.Session["AVALON_SFTPC_SITE"]
-
         job = {
-            "project": project,
-            "site": site,
+            "project": api.Session["AVALON_PROJECT"],
+            "site": self.site,
             "type": type,
             "description": description,
             "files": files
