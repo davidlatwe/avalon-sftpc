@@ -64,7 +64,13 @@ def cget_representation_context(representation):
 
 
 class JobExporter(object):
-    """
+    """Tool for generate job package file for upload
+
+    Args:
+        remote_root (str): Projects root at remote site
+        remote_user (str): SFTP server username
+        site (str): SFTP server connection config name
+
     """
 
     FILE_IGNORE = [
@@ -75,12 +81,6 @@ class JobExporter(object):
     ]
 
     def __init__(self, remote_root, remote_user, site):
-        """
-        Args:
-            remote_root (str): Projects root at remote site
-            remote_user (str): SFTP server username
-
-        """
         self.jobs = list()
         self.remote_root = remote_root
         self.remote_user = remote_user
@@ -89,6 +89,12 @@ class JobExporter(object):
         self.available_loaders = api.discover(api.Loader)
 
     def export(self, out=None):
+        """Write out JSON format job package file
+
+        Args:
+            out (str, optional): Output file path
+
+        """
         if out is None:
             host = api.registered_host()
             workfile = host.current_file()
@@ -100,12 +106,12 @@ class JobExporter(object):
         return out
 
     def add_job(self, files, type, description):
-        """
+        """Append job
 
         Args:
-            files (list)
-            type (str)
-            description (str)
+            files (list): A list of local path and remote path tuple
+            type (str): Name of job type
+            description (str): Line of job detail
 
         """
         job = {
@@ -119,6 +125,10 @@ class JobExporter(object):
 
     def from_workfile(self, additional_jobs=None):
         """Generate jobs from workfile (DCC App agnostic)
+
+        Args:
+            additional_jobs (list, optional): A list of callbacks
+
         """
         # Add workfile
         session = api.Session
@@ -161,11 +171,15 @@ class JobExporter(object):
                                               os.path.basename(workfile)))
 
         # Additional jobs
-        for job in additional_jobs:
+        for job in additional_jobs or []:
             job()
 
     def from_representation(self, representation_id):
         """Generate job from representation
+
+        Args:
+            representation_id (str): Avalon representation Id
+
         """
         representation_id = io.ObjectId(representation_id)
         representation = io.find_one({"type": "representation",
