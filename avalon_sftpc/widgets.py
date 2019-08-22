@@ -87,6 +87,7 @@ class JobWidget(QtWidgets.QWidget):
         input_layout.addWidget(send_btn)
 
         skip_exists = QtWidgets.QCheckBox("Skip if exists")
+        skip_exists.setChecked(True)
 
         staging_layout.addWidget(self.staging_view)
         staging_layout.addLayout(input_layout)
@@ -94,6 +95,7 @@ class JobWidget(QtWidgets.QWidget):
 
         self.line_input = line_input
         self.send_btn = send_btn
+        self.skip_exists = skip_exists
 
         layout = QtWidgets.QVBoxLayout(self)
 
@@ -223,10 +225,11 @@ class JobWidget(QtWidgets.QWidget):
 
         model = self.model
         status_column = model.UPLOAD_COLUMNS.index("status")
+        skip_exists = self.skip_exists.isChecked()
 
         for index in source_selection.indexes():
             if index.column() == status_column:
-                model.setData(index, 1, role=model.UploadDisplayRole)
+                model.pending(index, skip_exists)
 
     def act_upload_all(self):
         """Upload all jobs
@@ -234,16 +237,16 @@ class JobWidget(QtWidgets.QWidget):
         """
         proxy = self.staging_proxy
         model = self.model
-        status_column = model.UPLOAD_COLUMNS.index("status")
+        skip_exists = self.skip_exists.isChecked()
 
         indexes = list()
         for row in range(proxy.rowCount()):
-            index = proxy.index(row, status_column)
+            index = proxy.index(row, 0)
             index = proxy.mapToSource(index)
             indexes.append(index)
 
         for index in indexes:
-            model.setData(index, 1, role=model.UploadDisplayRole)
+            model.pending(index, skip_exists)
 
     def act_clear(self):
         """Clear all staging jobs

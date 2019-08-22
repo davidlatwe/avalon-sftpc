@@ -113,6 +113,21 @@ class Uploader(Process):
                     self.pipe_out.put((job._id, fsize, error, self._id))
                     continue
 
+                if job.skip_exists:
+                    try:
+                        stat = conn.sftp_client.stat(dst)
+                    except IOError:
+                        pass  # Not exists, do upload!
+                    else:
+                        if fsize == stat.st_size:
+                            self.pipe_out.put((job._id, fsize, 1, self._id))
+                            continue
+
+                        # (TODO) Compare mtime
+                        #   Currently we already uploading files without
+                        #   preserving file's modification time, so maybe
+                        #   next time. :)
+
                 remote_dir = os.path.dirname(dst)
 
                 try:

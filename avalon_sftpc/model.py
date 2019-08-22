@@ -37,13 +37,14 @@ class JobItem(object):
     """
     """
 
-    __slots__ = ("_id", "site", "content", "transferred", "result",
-                 "__weakref__")
+    __slots__ = ("_id", "site", "content", "skip_exists", "transferred",
+                 "result", "__weakref__")
 
     def __init__(self, job_id, site, content):
         self._id = str(job_id)
         self.site = site
         self.content = content
+        self.skip_exists = True
         self.transferred = 0
         self.result = 0
 
@@ -230,8 +231,13 @@ class JobSourceModel(TreeModel):  # QueueModel ?
                 pass
             self.canceled.emit()
 
-    def pending(self, package):
+    def pending(self, index, skip_exists):
+        package = self.data(index, self.NodeRole)
+        package["status"] = 1
+        self.dataChanged.emit(index, index, list())
+
         for job in package.jobs:
+            job.skip_exists = skip_exists
             self.pipe_in.put(job)
             self.jobsref[job._id] = job
 
@@ -359,15 +365,6 @@ class JobSourceModel(TreeModel):  # QueueModel ?
                 column = index.column()
 
                 key = self.UPLOAD_COLUMNS[column]
-                if key == "status":
-                    if value == 1:
-                        # Push to pending
-                        self.pending(node)
-
-                if key == "progress":
-                    # `progress` should not be set
-                    return
-
                 node[key] = value
                 # passing `list()` for PyQt5 (see PYSIDE-462)
                 self.dataChanged.emit(index, index, list())
