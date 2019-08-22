@@ -1,14 +1,15 @@
 
+import logging
 from avalon.vendor.Qt import QtWidgets, QtCore
 
 from .model import JobSourceModel, JobStagingProxyModel, JobUploadProxyModel
 from .delegates import ProgressDelegate
 
 
-class JobWidget(QtWidgets.QWidget):
+main_logger = logging.getLogger("avalon-sftpc")
 
-    echo = QtCore.Signal(str)
-    echo_anim = QtCore.Signal(list, int)
+
+class JobWidget(QtWidgets.QWidget):
 
     def __init__(self, parent=None):
         super(JobWidget, self).__init__(parent=parent)
@@ -193,37 +194,23 @@ class JobWidget(QtWidgets.QWidget):
         self.model.stage(job_file)
 
     def on_staging(self):
-        anim_message = [
-            "Staging.....",
-            "Staging....",
-            "Staging...",
-            "Staging..",
-            "Staging.",
-        ]
-        print(anim_message[0])
-        self.echo_anim.emit(anim_message, 200)
+        main_logger.info("Staging.....")
 
         self.send_btn.setEnabled(False)
         self.line_input.setEnabled(False)
 
     def on_staged(self):
-        self.echo.emit("Complete !")
+        main_logger.info("Complete !")
 
         self.send_btn.setEnabled(True)
         self.line_input.setEnabled(True)
         self.line_input.setText("")
 
     def on_canceling(self):
-        anim_message = [
-            "Canceling...",
-            "Canceling..",
-            "Canceling.",
-        ]
-        print(anim_message[0])
-        self.echo_anim.emit(anim_message, 600)
+        main_logger.info("Canceling.....")
 
     def on_canceled(self):
-        self.echo.emit("Canceled.")
+        main_logger.info("Canceled.")
 
         self.send_btn.setEnabled(True)
         self.line_input.setEnabled(True)

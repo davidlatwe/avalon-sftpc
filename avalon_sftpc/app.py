@@ -1,11 +1,20 @@
 
 import sys
-from avalon.vendor.Qt import QtWidgets, QtCore
+import logging
+from avalon.vendor.Qt import QtWidgets, QtCore, QtGui
+from avalon.vendor import qtawesome
 from avalon import tools, style
 from .widgets import JobWidget
 
 module = sys.modules[__name__]
 module.window = None
+
+
+main_logger = logging.getLogger("avalon-sftpc")
+main_logger.setLevel(logging.INFO)
+
+stream = logging.StreamHandler()
+main_logger.addHandler(stream)
 
 
 class Window(QtWidgets.QDialog):
@@ -21,20 +30,17 @@ class Window(QtWidgets.QDialog):
 
         stage = JobWidget()
 
-        messenger = QtWidgets.QLabel()
+        statusline = StatusLineWidget(main_logger, self)
 
         body_layout = QtWidgets.QVBoxLayout(body)
         body_layout.addWidget(stage)
-        body_layout.addWidget(messenger)
+        body_layout.addWidget(statusline)
 
         layout = QtWidgets.QVBoxLayout(self)
         layout.addWidget(body)
 
-        stage.echo.connect(self.echo)
-        stage.echo_anim.connect(self.echo)
-
         self.stage = stage
-        self.messenger = messenger
+        self.statusline = statusline
 
         # Defaults
         self.resize(700, 500)
@@ -43,23 +49,118 @@ class Window(QtWidgets.QDialog):
         self.stage.on_quit()
         return super(Window, self).closeEvent(event)
 
-    def echo(self, message, repeat=0):
-        messenger = self.messenger
 
-        if repeat:
-            messenger.setText(str(message[-1]))
+class WidgetLogHandler(logging.Handler):
 
-            def repeater():
-                message.insert(0, message.pop())
-                self.echo(message, repeat)
+    def __init__(self, widget):
+        super(WidgetLogHandler, self).__init__()
+        self.widget = widget
 
-            tools.lib.schedule(repeater, repeat, channel="message")
+        format = "%(message)s"
+        formatter = logging.Formatter(format)
+        self.setFormatter(formatter)
+
+    def emit(self, record):
+        dotting = record.msg.endswith(".....")
+        try:
+            log = self.format(record)
+            level = record.levelno
+            self.widget.echo.emit(level, log, dotting)
+        except (KeyboardInterrupt, SystemExit):
+            raise
+        except Exception:
+            self.handleError(record)
+
+
+class LogLevelIcon(QtWidgets.QWidget):
+
+    def __init__(self, parent=None):
+        super(LogLevelIcon, self).__init__(parent)
+
+        font_awesome = "fa.{}".format("bell")
+
+        self.level = logging.NOTSET
+        self.icons = {
+            logging.NOTSET: qtawesome.icon(font_awesome, color="#404040"),
+            logging.DEBUG: qtawesome.icon(font_awesome, color="#5AD594"),
+            logging.INFO: qtawesome.icon(font_awesome, color="#439BF2"),
+            logging.WARNING: qtawesome.icon(font_awesome, color="#EED14E"),
+            logging.ERROR: qtawesome.icon(font_awesome, color="#F53434"),
+            logging.CRITICAL: qtawesome.icon(font_awesome, color="#F34FC1"),
+        }
+
+        self.setMinimumSize(18, 18)
+        self.setMaximumSize(18, 18)
+
+    def paintEvent(self, event):
+        painter = QtGui.QPainter()
+        painter.begin(self)
+        painter.drawPixmap(0, 0, self.icons[self.level].pixmap(18, 18))
+        painter.end()
+
+
+class StatusLineWidget(QtWidgets.QWidget):
+
+    echo = QtCore.Signal(int, str, int)
+
+    def __init__(self, logger, parent=None):
+        super(StatusLineWidget, self).__init__(parent)
+
+        icon = LogLevelIcon()
+
+        line = QtWidgets.QLineEdit()
+        line.setReadOnly(True)
+        line.setStyleSheet("""
+            QLineEdit {
+                border: 0px;
+                padding: 0 8px;
+                color: #AAAAAA;
+                background: #363636;
+            }
+        """)
+
+        body = QtWidgets.QHBoxLayout(self)
+        body.addWidget(icon)
+        body.addWidget(line)
+
+        self.icon = icon
+        self.line = line
+
+        handler = WidgetLogHandler(self)
+        logger.addHandler(handler)
+
+        self.echo.connect(self.on_echo)
+
+    def on_echo(self, level, log, dotting=False):
+        icon = self.icon
+        line = self.line
+
+        def _echo(level, log):
+            icon.level = abs(level)
+            icon.update()
+            line.setText(log)
+
+        if dotting:
+            if log.endswith("....."):
+                log = log[:-4]
+            else:
+                log += "."
+
+            _echo(level, log)
+
+            def animator():
+                self.on_echo(level, log, dotting)
+
+            tools.lib.schedule(animator, 300, channel="statusline")
+
         else:
-            messenger.setText(str(message))
-            print(message)
-            tools.lib.schedule(lambda: messenger.setText(""),
-                               10000,
-                               channel="message")
+            line.setText(log)
+
+            if level < logging.WARNING:
+                # Back to default state
+                tools.lib.schedule(lambda: _echo(0, ""),
+                                   10000,
+                                   channel="statusline")
 
 
 def show(debug=False, demo=False, parent=None):
