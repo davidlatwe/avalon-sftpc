@@ -1,5 +1,6 @@
 
 import os
+import logging
 import contextlib
 import hashlib
 import threading
@@ -16,6 +17,9 @@ import pysftp
 import paramiko
 
 
+main_logger = logging.getLogger("avalon-sftpc")
+
+
 _STOP = "STOP"
 
 
@@ -27,7 +31,6 @@ def get_site(site_name):
 
     site_cfg = sites + "/%s.cfg" % site_name
     if not os.path.isfile(site_cfg):
-        # (TODO) This will crash app. Maybe an warning ?
         raise Exception("Site '%s' configuration file not found: %s"
                         "" % (site_name, site_cfg))
 
@@ -97,7 +100,13 @@ class Uploader(Process):
                 result = transferred == to_be_transferred
                 self.pipe_out.put((job._id, transferred, result, self._id))
 
-            with self._connection(**get_site(job.site)) as conn:
+            try:
+                site_config = get_site(job.site)
+            except Exception as error:
+                self.pipe_out.put((job._id, fsize, error, self._id))
+                continue
+
+            with self._connection(**site_config) as conn:
                 if not isinstance(conn, pysftp.Connection):
                     # Connection error occurred
                     error = conn
@@ -174,7 +183,7 @@ class PackageProducer(object):
                 contents.append((src, dst, fsize))
 
             if total_size == 0:
-                raise Exception("Package size is 0, this should not happen.")
+                main_logger.error("Package size is 0, this should not happen.")
 
             package = {
                 "project": data["project"],
@@ -193,7 +202,23 @@ class PackageProducer(object):
             yield package
 
     def _parse(self, json_file):
-        with open(json_file, "r") as file:
-            packages = json.load(file)
-        assert isinstance(packages, list)
+        if not json_file:
+            main_logger.warning("Please input package file path.")
+            return []
+
+        if not os.path.isfile(json_file):
+            main_logger.error("File not exists.")
+            return []
+
+        try:
+            with open(json_file, "r") as file:
+                packages = json.load(file)
+        except Exception:
+            main_logger.error("JSON parsing error.")
+            return []
+
+        if not isinstance(packages, list):
+            main_logger.error("Should be a `list` of upload packages.")
+            return []
+
         return packages

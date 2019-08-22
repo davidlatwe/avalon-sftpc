@@ -1,4 +1,5 @@
 
+import logging
 import threading
 from multiprocessing import Queue
 from weakref import WeakValueDictionary
@@ -7,6 +8,10 @@ from avalon import io
 from avalon.vendor import qtawesome
 from avalon.vendor.Qt import QtCore
 from avalon.tools.projectmanager.model import TreeModel, Node
+
+
+main_logger = logging.getLogger("avalon-sftpc")
+
 
 _Uploader = None
 _PackageProducer = None

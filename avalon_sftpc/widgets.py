@@ -189,8 +189,6 @@ class JobWidget(QtWidgets.QWidget):
 
     def stage(self):
         job_file = self.line_input.text()
-        # (TODO) Need to catch error inside the package producer
-        #        thread, maybe a global error pipe ?
         self.model.stage(job_file)
 
     def on_staging(self):
