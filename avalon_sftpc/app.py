@@ -135,8 +135,13 @@ class StatusLineWidget(QtWidgets.QWidget):
         icon = self.icon
         line = self.line
 
+        ALARM = logging.WARNING
+
+        if icon.level >= ALARM and level < ALARM:
+            return
+
         def _echo(level, log):
-            icon.level = abs(level)
+            icon.level = level
             icon.update()
             line.setText(log)
 
@@ -154,9 +159,9 @@ class StatusLineWidget(QtWidgets.QWidget):
             tools.lib.schedule(animator, 300, channel="statusline")
 
         else:
-            line.setText(log)
+            _echo(level, log)
 
-            if level < logging.WARNING:
+            if level < ALARM:
                 # Back to default state
                 tools.lib.schedule(lambda: _echo(0, ""),
                                    10000,
