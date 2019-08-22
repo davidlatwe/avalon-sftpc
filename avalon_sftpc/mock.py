@@ -12,8 +12,9 @@ _STOP = "STOP"
 
 class MockUploader(Process):
 
-    mock_upload_speed = 100
-    mock_error_rate = 1  # 0.9999999
+    mock_upload_speed = 500
+    mock_error_rate = 0.999999
+    max_error_count = 2
 
     def __init__(self, pipe_in, pipe_out, process_id):
         super(MockUploader, self).__init__()
@@ -48,7 +49,8 @@ class MockUploader(Process):
 
                     # Simulate error
                     dice = random.random()
-                    if dice > self.mock_error_rate:
+                    if self.max_error_count and dice > self.mock_error_rate:
+                        self.max_error_count -= 1
                         raise IOError("This is not what I want.")
 
             except Exception as error:
