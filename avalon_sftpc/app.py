@@ -43,7 +43,7 @@ class Window(QtWidgets.QDialog):
         self.statusline = statusline
 
         # Defaults
-        self.resize(700, 500)
+        self.resize(580, 700)
 
     def closeEvent(self, event):
         self.stage.on_quit()

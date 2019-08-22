@@ -66,6 +66,17 @@ class JobWidget(QtWidgets.QWidget):
         # Hide `status` column, since we now have an icon before progress bar
         upload_header = upload_view.header()
         upload_header.hideSection(3)
+        # Hide project and type by default for wider space
+        upload_header.hideSection(0)
+        upload_header.hideSection(1)
+        staging_header = staging_view.header()
+        staging_header.hideSection(0)
+        staging_header.hideSection(1)
+
+        staging_view.setColumnWidth(2, 250)
+        staging_view.setColumnWidth(3, 70)
+        staging_view.setColumnWidth(4, 70)
+        upload_view.setColumnWidth(2, 250)
 
         self.staging_view = staging_view
         self.upload_view = upload_view
@@ -73,7 +84,18 @@ class JobWidget(QtWidgets.QWidget):
         # Contorls and Layout
         #
         upload_body = QtWidgets.QWidget()
+
+        show_project = QtWidgets.QCheckBox("Show Project")
+        show_type = QtWidgets.QCheckBox("Show Type")
+
+        top_layout = QtWidgets.QHBoxLayout()
+        top_layout.addWidget(show_project)
+        top_layout.addSpacing(5)
+        top_layout.addWidget(show_type)
+        top_layout.addStretch()
+
         upload_layout = QtWidgets.QVBoxLayout(upload_body)
+        upload_layout.addLayout(top_layout)
         upload_layout.addWidget(self.upload_view)
         # --
         staging_body = QtWidgets.QWidget()
@@ -86,13 +108,15 @@ class JobWidget(QtWidgets.QWidget):
         input_layout.addWidget(line_input)
         input_layout.addWidget(send_btn)
 
-        skip_exists = QtWidgets.QCheckBox("Skip if exists")
+        skip_exists = QtWidgets.QCheckBox("Skip Exists")
         skip_exists.setChecked(True)
 
         staging_layout.addWidget(self.staging_view)
         staging_layout.addLayout(input_layout)
         staging_layout.addWidget(skip_exists)
 
+        self.show_project = show_project
+        self.show_type = show_type
         self.line_input = line_input
         self.send_btn = send_btn
         self.skip_exists = skip_exists
@@ -104,13 +128,15 @@ class JobWidget(QtWidgets.QWidget):
         splitter.setStyleSheet("QSplitter{ border: 0px; }")
         splitter.addWidget(upload_body)
         splitter.addWidget(staging_body)
-        splitter.setSizes([200, 120])
+        splitter.setSizes([120, 200])
 
         layout.addWidget(splitter)
 
         # Connect
         #
         send_btn.clicked.connect(self.stage)
+        show_project.stateChanged.connect(self.on_show_project)
+        show_type.stateChanged.connect(self.on_show_type)
         self.model.staging.connect(self.on_staging)
         self.model.staged.connect(self.on_staged)
         self.model.canceling.connect(self.on_canceling)
@@ -214,6 +240,14 @@ class JobWidget(QtWidgets.QWidget):
 
         self.send_btn.setEnabled(True)
         self.line_input.setEnabled(True)
+
+    def on_show_project(self, show):
+        self.staging_view.header().setSectionHidden(0, not show)
+        self.upload_view.header().setSectionHidden(0, not show)
+
+    def on_show_type(self, show):
+        self.staging_view.header().setSectionHidden(1, not show)
+        self.upload_view.header().setSectionHidden(1, not show)
 
     def act_upload_selected(self):
         """Upload selected jobs only
