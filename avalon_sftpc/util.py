@@ -231,16 +231,19 @@ class JobExporter(object):
         # Collect all files
         jobs = list()
 
+        repr_dir = os.path.normpath(repr_dir)
+        remote_dir = os.path.normpath(remote_dir)
+
         for head, dir, files in os.walk(repr_dir):
+
+            remote_head = remote_dir + head[len(repr_dir):]
 
             for fname in files:
                 if any(fname.endswith(ext) for ext in self.FILE_IGNORE):
                     continue
 
-                local_file = head + "/" + fname
-                remote_path = remote_dir + "/" + fname
-                local_file = os.path.normpath(local_file)
-                remote_path = os.path.normpath(remote_path)
+                local_file = os.path.join(head, fname)
+                remote_path = os.path.join(remote_head, fname)
 
                 jobs.append((local_file, remote_path))
 
