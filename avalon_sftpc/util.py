@@ -80,10 +80,14 @@ class JobExporter(object):
         ".swatch",
     ]
 
-    def __init__(self, remote_root, remote_user, site):
+    def __init__(self, remote_root, remote_user, site=None):
         self.jobs = list()
         self.remote_root = remote_root
         self.remote_user = remote_user
+
+        # `AVALON_SFTPC_SITE` deprecated, this is for backward compat
+        site = site or api.Session.get("AVALON_SFTPC_SITE")
+        assert site, "SFTP site name not provided."
         self.site = site
 
         self.available_loaders = api.discover(api.Loader)
