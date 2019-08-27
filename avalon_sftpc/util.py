@@ -97,8 +97,8 @@ class JobExporter(object):
         """
         if out is None:
             host = api.registered_host()
-            workfile = host.current_file()
-            out = workfile + ".sftp.job"
+            workfile = host.current_file() or "temp"
+            out = os.path.abspath(workfile + ".sftp.job")
 
         with open(out, "w") as file:
             json.dump(self.jobs, file, indent=4)
@@ -134,6 +134,9 @@ class JobExporter(object):
         session = api.Session
         host = api.registered_host()
         workfile = host.current_file()
+        if workfile is None:
+            # Must be saved since we are parsing workfile here
+            raise Exception("Could not obtain workfile path.")
 
         # Compute remote work dir
         project = io.find_one({"type": "project"})
