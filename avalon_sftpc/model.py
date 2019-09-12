@@ -7,7 +7,7 @@ from weakref import WeakValueDictionary
 from avalon import io
 from avalon.vendor import qtawesome
 from avalon.vendor.Qt import QtCore
-from avalon.tools.projectmanager.model import TreeModel, Node
+from avalon.tools.models import TreeModel, Item
 
 
 main_logger = logging.getLogger("avalon-sftpc")
@@ -49,7 +49,7 @@ class JobItem(object):
         self.result = 0
 
 
-class PackageItem(Node):
+class PackageItem(Item):
     """
     """
 
@@ -232,7 +232,7 @@ class JobSourceModel(TreeModel):  # QueueModel ?
             self.canceled.emit()
 
     def pending(self, index, skip_exists):
-        package = self.data(index, self.NodeRole)
+        package = self.data(index, self.ItemRole)
         package["status"] = 1
         self.dataChanged.emit(index, index, list())
 
@@ -376,7 +376,7 @@ class JobSourceModel(TreeModel):  # QueueModel ?
 
 class JobStagingProxyModel(QtCore.QSortFilterProxyModel):
 
-    COLUMNS = JobSourceModel.STAGING_COLUMNS
+    Columns = JobSourceModel.STAGING_COLUMNS
     StagingDisplayRole = JobSourceModel.StagingDisplayRole
     StagingSortRole = JobSourceModel.StagingSortRole
 
@@ -385,13 +385,13 @@ class JobStagingProxyModel(QtCore.QSortFilterProxyModel):
         self.setSortRole(self.StagingSortRole)
 
     def columnCount(self, parent):
-        return len(self.COLUMNS)
+        return len(self.Columns)
 
     def headerData(self, section, orientation, role):
 
         if role == QtCore.Qt.DisplayRole:
-            if section < len(self.COLUMNS):
-                label = self.COLUMNS[section]
+            if section < len(self.Columns):
+                label = self.Columns[section]
                 return "Size (MB)" if label == "size" else label.capitalize()
 
         super(JobStagingProxyModel,
@@ -420,14 +420,14 @@ class JobStagingProxyModel(QtCore.QSortFilterProxyModel):
             return True
 
         # Get the node data and validate
-        node = model.data(index, TreeModel.NodeRole)
+        node = model.data(index, TreeModel.ItemRole)
 
         return node.get("status") == 0
 
 
 class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
 
-    COLUMNS = JobSourceModel.UPLOAD_COLUMNS
+    Columns = JobSourceModel.UPLOAD_COLUMNS
     UploadDisplayRole = JobSourceModel.UploadDisplayRole
     UploadSortRole = JobSourceModel.UploadSortRole
     UploadDecorationRole = JobSourceModel.UploadDecorationRole
@@ -437,13 +437,13 @@ class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
         self.setSortRole(self.UploadSortRole)
 
     def columnCount(self, parent):
-        return len(self.COLUMNS)
+        return len(self.Columns)
 
     def headerData(self, section, orientation, role):
 
         if role == QtCore.Qt.DisplayRole:
-            if section < len(self.COLUMNS):
-                return self.COLUMNS[section].capitalize()
+            if section < len(self.Columns):
+                return self.Columns[section].capitalize()
 
         super(JobUploadProxyModel, self).headerData(section, orientation, role)
 
@@ -474,6 +474,6 @@ class JobUploadProxyModel(QtCore.QSortFilterProxyModel):
         if not index.isValid() or index is None:
             return True
 
-        node = model.data(index, TreeModel.NodeRole)
+        node = model.data(index, TreeModel.ItemRole)
 
         return node.get("status", 0) > 0
