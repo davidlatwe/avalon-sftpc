@@ -200,7 +200,7 @@ class JobSourceModel(TreeModel):  # QueueModel ?
         package = PackageItem(data)
 
         # Check duplicated
-        all_nodes = self._root_node.children()
+        all_nodes = self._root_item.children()
         if package in all_nodes:
             # If duplicated package has completed, allow to stage
             # again.
@@ -285,7 +285,7 @@ class JobSourceModel(TreeModel):  # QueueModel ?
         updator.start()
 
     def clear_stage(self):
-        all_nodes = self._root_node.children()
+        all_nodes = self._root_item.children()
 
         if all(n.get("status", 0) == 0 for n in all_nodes):
             # All staged, clear all
